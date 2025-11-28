@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------
+  # Service de Base de Données (PostgreSQL)
+  # ----------------------------------------
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=easm_user
+      - POSTGRES_PASSWORD=easm_password
+      - POSTGRES_DB=easm_db
+    ports:
+      - "5432:5432" # Accessible depuis l'hôte pour Membre B (Outils SQL)
+
+  # ----------------------------------------
+  # Service de Message Broker (Redis)
+  # ----------------------------------------
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  # ----------------------------------------
+  # API Backend (Membre B)
+  # ----------------------------------------
+  backend:
+    build: ./backend
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend/src:/app/src # Hot-reload: modifiez le code, ça se met à jour
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://easm_user:easm_password@db:5432/easm_db
+      - REDIS_URL=redis://redis:6379/0
+
+  # ----------------------------------------
+  # Workers de Scan (Membre A)
+  # ----------------------------------------
+  worker:
+    build: ./workers
+    command: celery -A src.tasks worker --loglevel=info
+    volumes:
+      - ./workers/src:/app/src
+    depends_on:
+      - redis
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    # Membre A installera ici les binaires (Amass, Nuclei) via le Dockerfile
+
+volumes:
+  postgres_data:
