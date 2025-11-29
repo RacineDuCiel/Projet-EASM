@@ -31,6 +31,8 @@ services:
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend/src:/app/src # Hot-reload: modifiez le code, ça se met à jour
+      - ./backend/alembic:/app/alembic # Pour que les migrations soient persistantes
+      - ./backend/alembic.ini:/app/alembic.ini
     ports:
       - "8000:8000"
     depends_on:

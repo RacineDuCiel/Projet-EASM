@@ -52,3 +52,15 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Redis
+dump.rdb
+
+# Coverage / Testing
+.coverage
+htmlcov/
+.pytest_cache/

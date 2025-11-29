@@ -99,3 +99,23 @@ class Asset(AssetBase):
 class ScanResult(BaseModel):
     status: ScanStatus
     assets: List[AssetCreate]
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+
+class UserBase(BaseModel):
+    username: str
+
+class UserCreate(UserBase):
+    password: str
+
+class User(UserBase):
+    id: UUID
+    is_active: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
