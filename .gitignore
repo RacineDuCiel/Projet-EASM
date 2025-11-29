@@ -43,6 +43,7 @@ redis_data/
 .vscode/
 *.swp
 *.swo
+.agent/
 
 # Logs
 *.log

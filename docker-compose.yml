@@ -54,5 +54,32 @@ services:
       - REDIS_URL=redis://redis:6379/0
     # Membre A installera ici les binaires (Amass, Nuclei) via le Dockerfile
 
+  # ----------------------------------------
+  # Monitoring & Administration
+  # ----------------------------------------
+  flower:
+    image: mher/flower
+    command: celery --broker=redis://redis:6379/0 flower --port=5555
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - portainer_data:/data
+    ports:
+      - "9000:9000"
+
 volumes:
   postgres_data:
+  portainer_data:
