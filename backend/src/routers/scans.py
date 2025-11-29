@@ -49,6 +49,23 @@ async def receive_scan_results(scan_id: UUID, result: schemas.ScanResult, db: As
     
     return {"status": "ok"}
 
+@router.post("/{scan_id}/assets")
+async def add_scan_assets(scan_id: UUID, assets: List[schemas.AssetCreate], db: AsyncSession = Depends(database.get_db)):
+    """
+    Endpoint pour ajouter des assets au fil de l'eau (incremental updates).
+    N'affecte pas le statut du scan.
+    """
+    # 1. Get Scan
+    scan = await crud.get_scan(db, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    
+    # 2. Process Assets
+    for asset_data in assets:
+        await crud.create_asset(db, asset_data, scan.scope_id)
+        
+    return {"status": "assets_added", "count": len(assets)}
+
 @router.get("/", response_model=List[schemas.Scan])
 async def read_scans(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(database.get_db)):
     return await crud.get_scans(db, skip=skip, limit=limit)

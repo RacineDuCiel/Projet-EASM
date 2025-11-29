@@ -24,7 +24,7 @@ services:
       - "6379:6379"
 
   # ----------------------------------------
-  # API Backend (Membre B)
+  # API Backend
   # ----------------------------------------
   backend:
     build: ./backend
@@ -41,18 +41,33 @@ services:
       - REDIS_URL=redis://redis:6379/0
 
   # ----------------------------------------
-  # Workers de Scan (Membre A)
+  # Workers de Scan
   # ----------------------------------------
-  worker:
+  worker_discovery:
     build: ./workers
-    command: celery -A src.tasks worker --loglevel=info
+    # Queue 'discovery' pour les tâches rapides (Subfinder, Orchestration)
+    # Concurrency élevée car peu de CPU/RAM par tâche
+    command: celery -A src.tasks worker --loglevel=info -Q discovery --concurrency=10
     volumes:
       - ./workers/src:/app/src
     depends_on:
       - redis
     environment:
       - REDIS_URL=redis://redis:6379/0
-    # Membre A installera ici les binaires (Amass, Nuclei) via le Dockerfile
+      - BACKEND_URL=http://backend:8000
+
+  worker_scan:
+    build: ./workers
+    # Queue 'scan' pour les tâches lourdes (Naabu, Nuclei)
+    # Concurrency faible pour éviter de surcharger le réseau/CPU
+    command: celery -A src.tasks worker --loglevel=info -Q scan --concurrency=2
+    volumes:
+      - ./workers/src:/app/src
+    depends_on:
+      - redis
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - BACKEND_URL=http://backend:8000
 
   # ----------------------------------------
   # Monitoring & Administration
