@@ -85,9 +85,20 @@ async def read_scan_events(scan_id: UUID, db: AsyncSession = Depends(database.ge
         raise HTTPException(status_code=404, detail="Scan not found")
     return scan.events
 
+from src.api.v1.endpoints import auth
+from src.models import User
+
 @router.get("/", response_model=List[schemas.Scan])
-async def read_scans(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(database.get_db)):
-    return await ScanService.get_scans(db, skip=skip, limit=limit)
+async def read_scans(
+    skip: int = 0, 
+    limit: int = 100, 
+    db: AsyncSession = Depends(database.get_db),
+    current_user: User = Depends(auth.get_current_user)
+):
+    if current_user.role == "admin":
+        return await ScanService.get_scans(db, skip=skip, limit=limit)
+    else:
+        return await ScanService.get_scans_by_program(db, program_id=current_user.program_id, skip=skip, limit=limit)
 
 @router.get("/{scan_id}", response_model=schemas.Scan)
 async def read_scan(scan_id: UUID, db: AsyncSession = Depends(database.get_db)):

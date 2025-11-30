@@ -31,3 +31,7 @@ class VulnStatus(str, enum.Enum):
     open = "open"
     fixed = "fixed"
     false_positive = "false_positive"
+
+class UserRole(str, enum.Enum):
+    admin = "admin"
+    user = "user"

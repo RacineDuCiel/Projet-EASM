@@ -33,5 +33,9 @@ class ScanService:
         return await crud.get_scans(db, skip=skip, limit=limit)
 
     @staticmethod
+    async def get_scans_by_program(db: AsyncSession, program_id: UUID, skip: int = 0, limit: int = 100):
+        return await crud.get_scans_by_program(db, program_id, skip=skip, limit=limit)
+
+    @staticmethod
     async def update_status(db: AsyncSession, scan_id: UUID, status: models.ScanStatus):
         return await crud.update_scan_status(db, scan_id, status)

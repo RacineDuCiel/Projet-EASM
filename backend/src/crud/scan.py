@@ -15,6 +15,16 @@ async def get_scans(db: AsyncSession, skip: int = 0, limit: int = 100):
     result = await db.execute(select(models.Scan).offset(skip).limit(limit))
     return result.scalars().all()
 
+async def get_scans_by_program(db: AsyncSession, program_id: UUID, skip: int = 0, limit: int = 100):
+    result = await db.execute(
+        select(models.Scan)
+        .join(models.Scope)
+        .where(models.Scope.program_id == program_id)
+        .offset(skip)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
 async def get_scan(db: AsyncSession, scan_id: UUID):
     result = await db.execute(select(models.Scan).where(models.Scan.id == scan_id))
     return result.scalar_one_or_none()

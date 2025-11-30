@@ -37,7 +37,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         raise credentials_exception
     return user
 
-@router.post("/token", response_model=schemas.Token)
+@router.post("/token", response_model=schemas.TokenWithUser)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(database.get_db)):
     # 1. Get user
     result = await db.execute(select(models.User).where(models.User.username == form_data.username))
@@ -54,9 +54,10 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     # 3. Create token
     access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth.create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
+        data={"sub": user.username, "role": user.role.value, "program_id": str(user.program_id) if user.program_id else None},
+        expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer", "user": user}
 
 @router.post("/users/", response_model=schemas.User)
 async def create_user(user: schemas.UserCreate, db: AsyncSession = Depends(database.get_db)):
@@ -66,7 +67,12 @@ async def create_user(user: schemas.UserCreate, db: AsyncSession = Depends(datab
         raise HTTPException(status_code=400, detail="Username already registered")
     
     hashed_password = auth.get_password_hash(user.password)
-    db_user = models.User(username=user.username, hashed_password=hashed_password)
+    db_user = models.User(
+        username=user.username, 
+        hashed_password=hashed_password,
+        role=user.role,
+        program_id=user.program_id
+    )
     db.add(db_user)
     await db.commit()
     await db.refresh(db_user)

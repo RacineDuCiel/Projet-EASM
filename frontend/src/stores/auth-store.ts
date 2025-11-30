@@ -2,24 +2,27 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import api from '@/lib/api';
 
-interface User {
+export interface User {
     id: string;
-    email: string;
-    role: string;
+    username: string;
+    role: 'admin' | 'user';
+    program_id?: string | null;
+    is_active: boolean;
 }
 
 interface LoginResponse {
     access_token: string;
     token_type: string;
+    user: User;
 }
 
 interface AuthState {
     token: string | null;
     user: User | null;
     isAuthenticated: boolean;
-    setToken: (token: string) => void;
-    setUser: (user: User) => void;
-    login: (username: string, password: string) => Promise<void>;
+    setToken: (token: string | null) => void;
+    setUser: (user: User | null) => void;
+    login: (params: { username: string; password: string }) => Promise<void>;
     logout: () => void;
 }
 
@@ -31,19 +34,24 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: false,
             setToken: (token) => set({ token, isAuthenticated: !!token }),
             setUser: (user) => set({ user }),
-            login: async (username, password) => {
-                const params = new URLSearchParams();
-                params.append('username', username);
-                params.append('password', password);
+            login: async ({ username, password }) => {
+                try {
+                    const params = new URLSearchParams();
+                    params.append('username', username);
+                    params.append('password', password);
 
-                const response = await api.post<LoginResponse>('/auth/token', params, {
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                });
+                    const response = await api.post<LoginResponse>('/auth/token', params, {
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                    });
 
-                const { access_token } = response.data;
-                set({ token: access_token, isAuthenticated: true, user: { id: '1', email: username, role: 'admin' } }); // Mock user for now
+                    const { access_token, user } = response.data;
+                    set({ token: access_token, isAuthenticated: true, user: user });
+                } catch (error) {
+                    console.error('Login failed:', error);
+                    throw error;
+                }
             },
             logout: () => set({ token: null, user: null, isAuthenticated: false }),
         }),

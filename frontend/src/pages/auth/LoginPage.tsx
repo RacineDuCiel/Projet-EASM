@@ -22,7 +22,7 @@ export default function LoginPage() {
         setError('');
 
         try {
-            await login(username, password);
+            await login({ username, password });
             navigate('/');
         } catch (err) {
             console.error('Login error:', err);
