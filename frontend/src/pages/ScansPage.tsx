@@ -118,7 +118,6 @@ export default function ScansPage() {
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="passive">Passive Discovery</SelectItem>
-                                        <SelectItem value="active">Active Scan (Port/Vuln)</SelectItem>
                                         <SelectItem value="full">Full Scan</SelectItem>
                                     </SelectContent>
                                 </Select>
