@@ -9,6 +9,9 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { Link } from 'react-router-dom';
+import { Eye } from 'lucide-react';
 
 // Actually, I'll use a simple span for badges for now or create a Badge component.
 // Let's create a simple Badge component inline or use basic Tailwind classes.
@@ -49,6 +52,7 @@ export default function AssetsPage() {
                             <TableHead>Services</TableHead>
                             <TableHead>Vulnerabilities</TableHead>
                             <TableHead className="text-right">Last Seen</TableHead>
+                            <TableHead>Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -76,6 +80,14 @@ export default function AssetsPage() {
                                     <TableCell>{asset.vulnerabilities.length}</TableCell>
                                     <TableCell className="text-right">
                                         {new Date(asset.last_seen).toLocaleDateString()}
+                                    </TableCell>
+                                    <TableCell>
+                                        <Link to={`/assets/${asset.id}`}>
+                                            <Button variant="ghost" size="sm">
+                                                <Eye className="h-4 w-4 mr-2" />
+                                                View
+                                            </Button>
+                                        </Link>
                                     </TableCell>
                                 </TableRow>
                             ))

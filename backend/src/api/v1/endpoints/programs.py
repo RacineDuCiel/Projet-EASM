@@ -35,3 +35,17 @@ async def create_scope_for_program(
 @router.get("/{program_id}/scopes/", response_model=List[schemas.Scope])
 async def read_scopes(program_id: UUID, db: AsyncSession = Depends(database.get_db)):
     return await crud.get_scopes(db, program_id=program_id)
+
+@router.delete("/{program_id}", status_code=204)
+async def delete_program(program_id: UUID, db: AsyncSession = Depends(database.get_db)):
+    program = await crud.delete_program(db, program_id)
+    if not program:
+        raise HTTPException(status_code=404, detail="Program not found")
+    return
+
+@router.delete("/{program_id}/scopes/{scope_id}", status_code=204)
+async def delete_scope(program_id: UUID, scope_id: UUID, db: AsyncSession = Depends(database.get_db)):
+    scope = await crud.delete_scope(db, scope_id)
+    if not scope:
+        raise HTTPException(status_code=404, detail="Scope not found")
+    return

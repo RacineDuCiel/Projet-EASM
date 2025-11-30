@@ -1,7 +1,8 @@
 import { Outlet, useNavigate, Link } from 'react-router-dom';
-import { Shield, LayoutDashboard, Database, Activity, Settings, LogOut } from 'lucide-react';
+import { Shield, LayoutDashboard, Database, Activity, Settings, LogOut, Users } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { Button } from '@/components/ui/button';
+import { Toaster } from '@/components/ui/toaster';
 
 export default function Layout() {
     const { user, logout } = useAuthStore();
@@ -27,6 +28,18 @@ export default function Layout() {
                             <Link to="/admin" className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-accent hover:text-accent-foreground transition-colors">
                                 <LayoutDashboard className="h-4 w-4" />
                                 Admin Console
+                            </Link>
+                            <Link to="/admin/programs" className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-accent hover:text-accent-foreground transition-colors">
+                                <Shield className="h-4 w-4" />
+                                Programs
+                            </Link>
+                            <Link to="/admin/users" className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-accent hover:text-accent-foreground transition-colors">
+                                <Users className="h-4 w-4" />
+                                Users
+                            </Link>
+                            <Link to="/admin/scans" className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-accent hover:text-accent-foreground transition-colors">
+                                <Activity className="h-4 w-4" />
+                                Scans
                             </Link>
                             <Link to="/settings" className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground rounded-md transition-colors">
                                 <Settings className="h-4 w-4" />
@@ -83,6 +96,7 @@ export default function Layout() {
                     <Outlet />
                 </div>
             </main>
+            <Toaster />
         </div>
     );
 }

@@ -44,3 +44,35 @@ export interface Asset {
     services: Service[];
     vulnerabilities: Vulnerability[];
 }
+
+export interface Scope {
+    id: string;
+    scope_type: 'domain' | 'ip_range' | 'hostname';
+    value: string;
+    program_id: string;
+}
+
+export interface Program {
+    id: string;
+    name: string;
+    discord_webhook_url?: string;
+    created_at: string;
+    scopes: Scope[];
+}
+export interface User {
+    id: string;
+    username: string;
+    role: 'admin' | 'user';
+    program_id?: string | null;
+    is_active: boolean;
+    program?: Program; // Optional relationship
+}
+
+export interface Scan {
+    id: string;
+    scope_id: string;
+    scan_type: 'passive' | 'active' | 'full';
+    status: 'pending' | 'running' | 'completed' | 'failed';
+    started_at: string;
+    completed_at?: string;
+}

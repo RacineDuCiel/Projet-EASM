@@ -9,10 +9,12 @@ const api = axios.create({
     },
 });
 
+import { useAuthStore } from '@/stores/auth-store';
+
 // Request interceptor for adding auth token
 api.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem('token');
+        const token = useAuthStore.getState().token;
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
@@ -29,7 +31,7 @@ api.interceptors.response.use(
     (error) => {
         if (error.response?.status === 401) {
             // Clear token and redirect to login if needed
-            localStorage.removeItem('token');
+            useAuthStore.getState().logout();
             // window.location.href = '/login'; // Uncomment when routing is ready
         }
         return Promise.reject(error);

@@ -2,13 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import api from '@/lib/api';
 
-export interface User {
-    id: string;
-    username: string;
-    role: 'admin' | 'user';
-    program_id?: string | null;
-    is_active: boolean;
-}
+import type { User } from '@/types';
 
 interface LoginResponse {
     access_token: string;

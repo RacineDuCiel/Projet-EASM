@@ -92,3 +92,27 @@ async def get_assets_by_program(db: AsyncSession, program_id: UUID, skip: int = 
         .limit(limit)
     )
     return result.scalars().all()
+
+async def get_assets_by_scope(db: AsyncSession, scope_id: UUID, skip: int = 0, limit: int = 100):
+    result = await db.execute(
+        select(models.Asset)
+        .where(models.Asset.scope_id == scope_id)
+        .options(
+            selectinload(models.Asset.services),
+            selectinload(models.Asset.vulnerabilities)
+        )
+        .offset(skip)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+async def get_asset(db: AsyncSession, asset_id: UUID):
+    result = await db.execute(
+        select(models.Asset)
+        .where(models.Asset.id == asset_id)
+        .options(
+            selectinload(models.Asset.services),
+            selectinload(models.Asset.vulnerabilities)
+        )
+    )
+    return result.scalar_one_or_none()

@@ -77,3 +77,53 @@ async def create_user(user: schemas.UserCreate, db: AsyncSession = Depends(datab
     await db.commit()
     await db.refresh(db_user)
     return db_user
+    return db_user
+
+@router.get("/users/", response_model=list[schemas.User])
+async def read_users(
+    skip: int = 0, 
+    limit: int = 100, 
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(database.get_db)
+):
+    if current_user.role != models.UserRole.admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    from sqlalchemy.orm import selectinload
+    result = await db.execute(
+        select(models.User)
+        .options(selectinload(models.User.program))
+        .offset(skip)
+        .limit(limit)
+    )
+    return result.scalars().all()
+    return result.scalars().all()
+
+@router.delete("/users/{user_id}", status_code=204)
+async def delete_user(
+    user_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(database.get_db)
+):
+    if current_user.role != models.UserRole.admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Prevent self-deletion
+    if str(current_user.id) == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+    from uuid import UUID
+    try:
+        user_uuid = UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user ID format")
+
+    result = await db.execute(select(models.User).where(models.User.id == user_uuid))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    await db.delete(user)
+    await db.commit()
+    return

@@ -31,6 +31,7 @@ class Scope(ScopeBase):
 
 class ProgramBase(BaseModel):
     name: str
+    discord_webhook_url: str | None = None
 
 class ProgramCreate(ProgramBase):
     @field_validator('name')
@@ -40,6 +41,7 @@ class ProgramCreate(ProgramBase):
 
 class Program(ProgramBase):
     id: UUID
+    discord_webhook_url: str | None = None
     created_at: datetime
     scopes: List[Scope] = []
 

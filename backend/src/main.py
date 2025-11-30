@@ -5,7 +5,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from src.db.session import engine, Base
-from src.api.v1.endpoints import programs, scans, assets, monitoring, auth, notifications
+from src.api.v1.endpoints import programs, scans, assets, monitoring, auth, notifications, settings as settings_router
 from src.core.config import settings
 
 # Rate limiter configuration
@@ -47,20 +47,14 @@ app.add_middleware(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-app.include_router(auth.router, prefix="/api/v1")
-app.include_router(programs.router, prefix="/api/v1")
-app.include_router(scans.router, prefix="/api/v1")
-app.include_router(assets.router, prefix="/api/v1")
-app.include_router(monitoring.router, prefix="/api/v1")
-app.include_router(notifications.router, prefix="/api/v1")
-
-@app.get("/")
-def read_root():
-    return {
-        "status": "EASM API is running",
-        "environment": settings.ENVIRONMENT,
-        "docs": "/docs"
-    }
+# Include Routers
+app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
+app.include_router(programs.router, prefix="/api/v1", tags=["Programs"])
+app.include_router(scans.router, prefix="/api/v1", tags=["Scans"])
+app.include_router(assets.router, prefix="/api/v1", tags=["Assets"])
+app.include_router(monitoring.router, prefix="/api/v1", tags=["Monitoring"])
+app.include_router(notifications.router, prefix="/api/v1", tags=["Notifications"])
+app.include_router(settings_router.router, prefix="/api/v1", tags=["Settings"])
 
 @app.get("/health")
 def health_check():

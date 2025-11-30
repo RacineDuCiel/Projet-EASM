@@ -8,10 +8,15 @@ import { useAuthStore } from '@/stores/auth-store';
 import DashboardPage from '@/pages/dashboard/DashboardPage';
 import AssetsPage from '@/pages/assets/AssetsPage';
 import AdminDashboard from '@/pages/admin/AdminDashboard';
+import AdminProgramsPage from '@/pages/admin/AdminProgramsPage';
+import AdminUsersPage from '@/pages/admin/AdminUsersPage';
 
-// Placeholder pages
-const Scans = () => <div><h2 className="text-2xl font-bold mb-4">Scans</h2><p className="text-muted-foreground">Launch and monitor security scans.</p></div>;
-const Settings = () => <div><h2 className="text-2xl font-bold mb-4">Settings</h2><p className="text-muted-foreground">Configure platform settings.</p></div>;
+import ScansPage from '@/pages/ScansPage';
+import ScanDetailsPage from '@/pages/ScanDetailsPage';
+import AssetDetailsPage from '@/pages/assets/AssetDetailsPage';
+import SettingsPage from '@/pages/SettingsPage';
+
+
 
 const queryClient = new QueryClient();
 
@@ -30,15 +35,21 @@ function App() {
               <Route path="/" element={<Layout />}>
                 <Route index element={<Navigate to="/admin" replace />} />
                 <Route path="admin" element={<AdminDashboard />} />
-                <Route path="settings" element={<Settings />} />
+                <Route path="admin/programs" element={<AdminProgramsPage />} />
+                <Route path="admin/users" element={<AdminUsersPage />} />
+                <Route path="admin/scans" element={<ScansPage />} />
+                <Route path="admin/scans/:scanId" element={<ScanDetailsPage />} />
+                <Route path="settings" element={<SettingsPage />} />
               </Route>
             ) : (
               /* User Routes */
               <Route path="/" element={<Layout />}>
                 <Route index element={<DashboardPage />} />
                 <Route path="assets" element={<AssetsPage />} />
-                <Route path="scans" element={<Scans />} />
-                <Route path="settings" element={<Settings />} />
+                <Route path="assets/:assetId" element={<AssetDetailsPage />} />
+                <Route path="scans" element={<ScansPage />} />
+                <Route path="scans/:scanId" element={<ScanDetailsPage />} />
+                <Route path="settings" element={<SettingsPage />} />
               </Route>
             )}
           </Route>

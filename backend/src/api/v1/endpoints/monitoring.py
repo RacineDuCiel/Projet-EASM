@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from src.db.session import get_db
+from src import models
 from src.models import Program, Asset, Scan, Vulnerability, ScanStatus, Severity
 
 router = APIRouter(

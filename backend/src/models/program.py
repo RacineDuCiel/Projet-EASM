@@ -11,6 +11,7 @@ class Program(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
+    discord_webhook_url = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     scopes = relationship("Scope", back_populates="program", cascade="all, delete-orphan", lazy="selectin")

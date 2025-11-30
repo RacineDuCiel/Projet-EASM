@@ -12,10 +12,13 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
 
+from src.schemas.program import Program
+
 class User(UserBase):
     id: UUID
     is_active: bool
     created_at: datetime
+    program: Optional[Program] = None
 
     model_config = ConfigDict(from_attributes=True)
 
