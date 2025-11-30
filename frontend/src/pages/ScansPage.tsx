@@ -177,12 +177,6 @@ export default function ScansPage() {
                                                 : '-'}
                                         </TableCell>
                                         <TableCell>
-                                            <Link to={`/scans/${scan.id}`}>
-                                                <Button variant="ghost" size="sm">
-                                                    <Eye className="h-4 w-4 mr-2" />
-                                                    View
-                                                </Button>
-                                            </Link>
                                         </TableCell>
                                     </TableRow>
                                 ))}

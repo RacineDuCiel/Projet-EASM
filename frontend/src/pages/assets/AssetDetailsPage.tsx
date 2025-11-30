@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -6,40 +7,71 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Loader2, ShieldAlert, Globe, Server } from 'lucide-react';
+import { ArrowLeft, Loader2, ShieldAlert, Globe, Server, ArrowUpDown, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
+
+type SortDirection = 'asc' | 'desc';
+type SortKey = 'severity' | 'title';
 
 export default function AssetDetailsPage() {
     const { assetId } = useParams<{ assetId: string }>();
+    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'severity', direction: 'desc' });
 
-    // Fetch Asset Details (we might need a specific endpoint for single asset if not available, 
-    // but for now let's assume we can filter or get it. 
-    // Actually, backend doesn't have GET /assets/{id} yet. 
-    // We should probably add it or just filter from list if list is small, but that's bad practice.
-    // Let's check backend endpoints again. 
-    // Wait, I can't check backend in the middle of write_to_file. 
-    // I'll assume I need to add GET /assets/{id} to backend as well.
-    // For now, I'll write the frontend assuming the endpoint exists or I'll implement it next.)
-
-    const { data: asset, isLoading } = useQuery({
+    const { data: asset, isLoading, error } = useQuery({
         queryKey: ['asset', assetId],
         queryFn: async () => {
-            // TODO: Ensure backend has this endpoint
             const response = await api.get<Asset>(`/assets/${assetId}`);
             return response.data;
         },
     });
 
+    // Sorted Vulnerabilities
+    const sortedVulns = useMemo(() => {
+        if (!asset?.vulnerabilities) return [];
+
+        return [...asset.vulnerabilities].sort((a, b) => {
+            const direction = sortConfig.direction === 'asc' ? 1 : -1;
+
+            if (sortConfig.key === 'severity') {
+                const severityWeight = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
+                const weightA = severityWeight[a.severity as keyof typeof severityWeight] || 0;
+                const weightB = severityWeight[b.severity as keyof typeof severityWeight] || 0;
+                return (weightA - weightB) * direction;
+            }
+
+            if (sortConfig.key === 'title') {
+                return a.title.localeCompare(b.title) * direction;
+            }
+
+            return 0;
+        });
+    }, [asset, sortConfig]);
+
+    const handleSort = (key: SortKey) => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'desc' ? 'asc' : 'desc'
+        }));
+    };
+
     if (isLoading) {
-        return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+        return <div className="flex h-[50vh] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     }
 
-    if (!asset) {
-        return <div>Asset not found</div>;
+    if (error || !asset) {
+        return (
+            <div className="flex h-[50vh] flex-col items-center justify-center gap-4 text-destructive">
+                <AlertTriangle className="h-12 w-12" />
+                <h3 className="text-lg font-semibold">Asset not found or error loading details</h3>
+                <Link to="/assets">
+                    <Button variant="outline">Back to Assets</Button>
+                </Link>
+            </div>
+        );
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex items-center gap-4">
                 <Link to="/assets">
                     <Button variant="outline" size="icon">
@@ -89,13 +121,21 @@ export default function AssetDetailsPage() {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Severity</TableHead>
-                                <TableHead>Title</TableHead>
+                                <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('severity')}>
+                                    <div className="flex items-center gap-1">
+                                        Severity <ArrowUpDown className="h-3 w-3" />
+                                    </div>
+                                </TableHead>
+                                <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('title')}>
+                                    <div className="flex items-center gap-1">
+                                        Title <ArrowUpDown className="h-3 w-3" />
+                                    </div>
+                                </TableHead>
                                 <TableHead>Description</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {asset.vulnerabilities?.map((vuln, index) => (
+                            {sortedVulns.map((vuln, index) => (
                                 <TableRow key={`${vuln.id}-${index}`}>
                                     <TableCell>
                                         <Badge variant={
@@ -113,9 +153,9 @@ export default function AssetDetailsPage() {
                                     </TableCell>
                                 </TableRow>
                             ))}
-                            {(!asset.vulnerabilities || asset.vulnerabilities.length === 0) && (
+                            {sortedVulns.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={3} className="text-center text-muted-foreground">
+                                    <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
                                         No vulnerabilities found.
                                     </TableCell>
                                 </TableRow>
@@ -149,7 +189,7 @@ export default function AssetDetailsPage() {
                             ))}
                             {(!asset.services || asset.services.length === 0) && (
                                 <TableRow>
-                                    <TableCell colSpan={3} className="text-center text-muted-foreground">
+                                    <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
                                         No services found.
                                     </TableCell>
                                 </TableRow>

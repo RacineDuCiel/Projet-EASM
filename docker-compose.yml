@@ -61,7 +61,7 @@ services:
       - HTTP_TIMEOUT=${HTTP_TIMEOUT:-30}
       - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
