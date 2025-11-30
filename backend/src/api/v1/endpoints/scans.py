@@ -100,6 +100,14 @@ async def read_scans(
     else:
         return await ScanService.get_scans_by_program(db, program_id=current_user.program_id, skip=skip, limit=limit)
 
+@router.post("/check-schedules")
+async def check_schedules(db: AsyncSession = Depends(database.get_db)):
+    """
+    Triggered by Celery Beat to check for scheduled scans.
+    """
+    triggered = await ScanService.check_scheduled_scans(db)
+    return {"status": "ok", "triggered_scans": triggered}
+
 @router.get("/{scan_id}", response_model=schemas.Scan)
 async def read_scan(scan_id: UUID, db: AsyncSession = Depends(database.get_db)):
     scan = await ScanService.get_scan(db, scan_id)

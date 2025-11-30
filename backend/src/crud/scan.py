@@ -45,3 +45,12 @@ async def create_scan_event(db: AsyncSession, event: schemas.ScanEventCreate, sc
     await db.commit()
     await db.refresh(db_event)
     return db_event
+
+async def get_latest_scan_for_scope(db: AsyncSession, scope_id: UUID):
+    result = await db.execute(
+        select(models.Scan)
+        .where(models.Scan.scope_id == scope_id)
+        .order_by(models.Scan.started_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()

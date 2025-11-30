@@ -25,3 +25,12 @@ app.conf.update(
 import src.tasks.discovery
 import src.tasks.scan
 import src.tasks.maintenance
+import src.tasks.scheduler
+from celery.schedules import crontab
+
+app.conf.beat_schedule = {
+    'check-scheduled-scans-every-hour': {
+        'task': 'src.tasks.trigger_scheduled_scans',
+        'schedule': crontab(minute=0), # Every hour
+    },
+}

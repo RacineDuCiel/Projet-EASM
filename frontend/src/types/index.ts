@@ -56,6 +56,7 @@ export interface Program {
     id: string;
     name: string;
     discord_webhook_url?: string;
+    scan_frequency?: 'never' | 'daily' | 'weekly' | 'monthly';
     created_at: string;
     scopes: Scope[];
 }

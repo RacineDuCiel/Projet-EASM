@@ -59,3 +59,11 @@ async def delete_scope(db: AsyncSession, scope_id: UUID):
         await db.delete(scope)
         await db.commit()
     return scope
+
+async def get_scheduled_programs(db: AsyncSession):
+    result = await db.execute(
+        select(models.Program)
+        .options(selectinload(models.Program.scopes))
+        .where(models.Program.scan_frequency != models.ScanFrequency.never)
+    )
+    return result.scalars().all()

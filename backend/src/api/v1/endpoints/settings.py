@@ -5,6 +5,7 @@ from src import crud, schemas
 from src.db import session as database
 from src.api.v1.endpoints import auth
 from src.models import User
+from src.models.enums import ScanFrequency
 import requests
 import logging
 
@@ -18,6 +19,7 @@ router = APIRouter(
 
 class SettingsUpdate(BaseModel):
     discord_webhook_url: str | None = None
+    scan_frequency: ScanFrequency | None = None
 
 @router.get("/", response_model=schemas.Program)
 async def get_settings(
@@ -42,18 +44,20 @@ async def update_settings(
     if not current_user.program_id:
         raise HTTPException(status_code=404, detail="User not associated with a program")
     
-    # Only admin can update settings? For now let's say yes.
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Not authorized to update settings")
+    # Allow any user associated with the program to update settings
+    # if current_user.role != "admin":
+    #    raise HTTPException(status_code=403, detail="Not authorized to update settings")
 
     program = await crud.get_program(db, current_user.program_id)
     if not program:
         raise HTTPException(status_code=404, detail="Program not found")
     
     # Update program
-    # We need to add update_program to crud if it doesn't support partial updates easily
-    # Or we can just do it here for now since it's one field
-    program.discord_webhook_url = settings.discord_webhook_url
+    if settings.discord_webhook_url is not None:
+        program.discord_webhook_url = settings.discord_webhook_url
+    if settings.scan_frequency is not None:
+        program.scan_frequency = settings.scan_frequency
+        
     db.add(program)
     await db.commit()
     await db.refresh(program)
@@ -74,7 +78,7 @@ async def test_notification(
     
     try:
         payload = {
-            "content": "🔔 **Test Notification**\nThis is a test message from your EASM platform. If you see this, the configuration is correct! ✅"
+            "content": "🔔 **Test Notification**\nThis is a test message from your EASM platform. If you see this, the configuration is correct"
         }
         resp = requests.post(program.discord_webhook_url, json=payload, timeout=5)
         resp.raise_for_status()

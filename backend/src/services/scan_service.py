@@ -39,3 +39,50 @@ class ScanService:
     @staticmethod
     async def update_status(db: AsyncSession, scan_id: UUID, status: models.ScanStatus):
         return await crud.update_scan_status(db, scan_id, status)
+
+    @staticmethod
+    async def check_scheduled_scans(db: AsyncSession):
+        from datetime import datetime, timedelta, timezone
+        from src.models.enums import ScanFrequency
+        
+        programs = await crud.get_scheduled_programs(db)
+        triggered_scans = []
+        
+        for program in programs:
+            frequency = program.scan_frequency
+            delta = None
+            
+            if frequency == ScanFrequency.daily:
+                delta = timedelta(days=1)
+            elif frequency == ScanFrequency.weekly:
+                delta = timedelta(weeks=1)
+            elif frequency == ScanFrequency.monthly:
+                delta = timedelta(days=30)
+            else:
+                continue
+                
+            for scope in program.scopes:
+                latest_scan = await crud.get_latest_scan_for_scope(db, scope.id)
+                
+                should_scan = False
+                if not latest_scan:
+                    should_scan = True
+                else:
+                    now = datetime.now(timezone.utc)
+                    last_scan_time = latest_scan.started_at
+                    if last_scan_time.tzinfo is None:
+                        last_scan_time = last_scan_time.replace(tzinfo=timezone.utc)
+                        
+                    if now - last_scan_time > delta:
+                        should_scan = True
+                
+                if should_scan:
+                    scan_in = schemas.ScanCreate(
+                        scope_id=scope.id,
+                        scan_type="passive"
+                    )
+                    new_scan = await ScanService.create_scan(db, scan_in)
+                    if new_scan:
+                        triggered_scans.append(new_scan.id)
+                        
+        return triggered_scans

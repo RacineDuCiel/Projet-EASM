@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from typing import List
 from uuid import UUID
 from datetime import datetime
-from src.models.enums import ScopeType
+from src.models.enums import ScopeType, ScanFrequency
 from src.core import validators
 
 class ScopeBase(BaseModel):
@@ -32,6 +32,7 @@ class Scope(ScopeBase):
 class ProgramBase(BaseModel):
     name: str
     discord_webhook_url: str | None = None
+    scan_frequency: ScanFrequency = ScanFrequency.never
 
 class ProgramCreate(ProgramBase):
     @field_validator('name')
@@ -42,6 +43,7 @@ class ProgramCreate(ProgramBase):
 class Program(ProgramBase):
     id: UUID
     discord_webhook_url: str | None = None
+    scan_frequency: ScanFrequency
     created_at: datetime
     scopes: List[Scope] = []
 

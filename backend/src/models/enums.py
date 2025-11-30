@@ -35,3 +35,9 @@ class VulnStatus(str, enum.Enum):
 class UserRole(str, enum.Enum):
     admin = "admin"
     user = "user"
+
+class ScanFrequency(str, enum.Enum):
+    never = "never"
+    daily = "daily"
+    weekly = "weekly"
+    monthly = "monthly"
