@@ -1,4 +1,4 @@
-version: '3.8'
+
 
 services:
   # ----------------------------------------
@@ -9,19 +9,34 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_USER=easm_user
-      - POSTGRES_PASSWORD=easm_password
-      - POSTGRES_DB=easm_db
+      - POSTGRES_USER=${POSTGRES_USER:-easm_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-easm_password}
+      - POSTGRES_DB=${POSTGRES_DB:-easm_db}
     ports:
-      - "5432:5432" # Accessible depuis l'hôte pour Membre B (Outils SQL)
+      - "5432:5432" # Accessible depuis l'hôte pour outils SQL
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U easm_user -d easm_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   # ----------------------------------------
   # Service de Message Broker (Redis)
   # ----------------------------------------
   redis:
     image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
 
   # ----------------------------------------
   # API Backend
@@ -36,11 +51,24 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql://easm_user:easm_password@db:5432/easm_db
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=${DATABASE_URL:-postgresql://easm_user:easm_password@db:5432/easm_db}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - SECRET_KEY=${SECRET_KEY:-changeme-generate-with-openssl}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - HTTP_TIMEOUT=${HTTP_TIMEOUT:-30}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
 
   # ----------------------------------------
   # Workers de Scan
@@ -53,10 +81,15 @@ services:
     volumes:
       - ./workers/src:/app/src
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - BACKEND_URL=http://backend:8000
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - BACKEND_URL=${BACKEND_URL:-http://backend:8000}
+      - HTTP_TIMEOUT=${HTTP_TIMEOUT:-30}
+    restart: unless-stopped
 
   worker_scan:
     build: ./workers
@@ -66,10 +99,37 @@ services:
     volumes:
       - ./workers/src:/app/src
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - BACKEND_URL=http://backend:8000
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - BACKEND_URL=${BACKEND_URL:-http://backend:8000}
+      - HTTP_TIMEOUT=${HTTP_TIMEOUT:-30}
+      - SCAN_PORTS=${SCAN_PORTS:-80,443,3000-3010,4200,5000-5010,8000-8010,8080-8090}
+    restart: unless-stopped
+
+  beat:
+    build: ./workers
+    command: celery -A src.tasks beat --loglevel=info
+    volumes:
+      - ./workers/src:/app/src
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - BACKEND_URL=${BACKEND_URL:-http://backend:8000}
+    restart: unless-stopped
+
+  juice-shop:
+    image: bkimminich/juice-shop
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
 
   # ----------------------------------------
   # Monitoring & Administration
@@ -80,9 +140,11 @@ services:
     ports:
       - "5555:5555"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=${REDIS_URL:-redis://redis:6379/0}
+    restart: unless-stopped
 
   portainer:
     image: portainer/portainer-ce:latest
@@ -99,4 +161,5 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   portainer_data:

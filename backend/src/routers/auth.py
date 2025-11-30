@@ -6,11 +6,12 @@ from datetime import timedelta
 from .. import database, models, schemas, auth
 
 router = APIRouter(
+    prefix="/auth",
     tags=["auth"],
     responses={404: {"description": "Not found"}},
 )
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(database.get_db)):
     credentials_exception = HTTPException(

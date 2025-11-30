@@ -1,15 +1,29 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 from .models import ScopeType, ScanType, ScanStatus, AssetType, Severity, VulnStatus
+from . import validators
 
 class ScopeBase(BaseModel):
     scope_type: ScopeType
     value: str
 
 class ScopeCreate(ScopeBase):
-    pass
+    @field_validator('value')
+    @classmethod
+    def validate_scope_value(cls, v, info):
+        """Valide la valeur du scope selon son type."""
+        scope_type = info.data.get('scope_type')
+        
+        if scope_type == ScopeType.domain:
+            return validators.validate_domain(v)
+        elif scope_type == ScopeType.ip_range:
+            return validators.validate_ip_range(v)
+        elif scope_type == ScopeType.hostname:
+            return validators.validate_hostname(v)
+        else:
+            raise ValueError(f"Unknown scope type: {scope_type}")
 
 class Scope(ScopeBase):
     id: UUID
@@ -21,7 +35,11 @@ class ProgramBase(BaseModel):
     name: str
 
 class ProgramCreate(ProgramBase):
-    pass
+    @field_validator('name')
+    @classmethod
+    def validate_program_name(cls, v):
+        """Valide et nettoie le nom du programme."""
+        return validators.sanitize_string(v, max_length=200)
 
 class Program(ProgramBase):
     id: UUID
@@ -45,6 +63,23 @@ class Scan(ScanBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+class ScanEventBase(BaseModel):
+    message: str
+    severity: str = "info"
+
+class ScanEventCreate(ScanEventBase):
+    pass
+
+class ScanEvent(ScanEventBase):
+    id: UUID
+    scan_id: UUID
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ScanWithEvents(Scan):
+    events: List[ScanEvent] = []
+
 class ServiceBase(BaseModel):
     port: int
     protocol: str
@@ -64,7 +99,7 @@ class VulnerabilityBase(BaseModel):
     title: str
     severity: Severity
     description: Optional[str] = None
-    status: VulnStatus
+    status: VulnStatus = VulnStatus.open  # Default value to prevent validation errors
 
 class VulnerabilityCreate(VulnerabilityBase):
     pass

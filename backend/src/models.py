@@ -9,6 +9,7 @@ from .database import Base
 class ScopeType(str, enum.Enum):
     domain = "domain"
     ip_range = "ip_range"
+    hostname = "hostname"  # Pour services internes (Docker, intranet, etc.)
 
 class ScanType(str, enum.Enum):
     passive = "passive"
@@ -69,6 +70,18 @@ class Scan(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
     scope = relationship("Scope", back_populates="scans", lazy="selectin")
+    events = relationship("ScanEvent", back_populates="scan", cascade="all, delete-orphan", lazy="selectin", order_by="ScanEvent.created_at")
+
+class ScanEvent(Base):
+    __tablename__ = "scan_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    scan_id = Column(UUID(as_uuid=True), ForeignKey("scans.id"), nullable=False)
+    message = Column(String, nullable=False)
+    severity = Column(String, default="info") # info, warning, error
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    scan = relationship("Scan", back_populates="events", lazy="selectin")
 
 class Asset(Base):
     __tablename__ = "assets"

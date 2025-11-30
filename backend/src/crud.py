@@ -64,6 +64,13 @@ async def update_scan_status(db: AsyncSession, scan_id: UUID, status: models.Sca
         await db.refresh(scan)
     return scan
 
+async def create_scan_event(db: AsyncSession, event: schemas.ScanEventCreate, scan_id: UUID):
+    db_event = models.ScanEvent(**event.model_dump(), scan_id=scan_id)
+    db.add(db_event)
+    await db.commit()
+    await db.refresh(db_event)
+    return db_event
+
 async def create_asset(db: AsyncSession, asset: schemas.AssetCreate, scope_id: UUID):
     # Check if asset exists
     result = await db.execute(
@@ -101,22 +108,46 @@ async def create_asset(db: AsyncSession, asset: schemas.AssetCreate, scope_id: U
             db.add(db_service)
     
     # Handle Vulnerabilities
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    new_vulns = []
+    logger.info(f"Attempting to create {len(asset.vulnerabilities)} vulnerabilities for asset {asset.value}")
+    
     for vuln in asset.vulnerabilities:
-        # Check if vuln exists (by title) - simplified dedup
-        result = await db.execute(
-            select(models.Vulnerability)
-            .where(models.Vulnerability.asset_id == db_asset.id)
-            .where(models.Vulnerability.title == vuln.title)
-        )
-        db_vuln = result.scalar_one_or_none()
-        if not db_vuln:
-            db_vuln = models.Vulnerability(**vuln.model_dump(), asset_id=db_asset.id)
-            db.add(db_vuln)
+            # Check if vuln exists (by title) - simplified dedup
+            result = await db.execute(
+                select(models.Vulnerability)
+                .where(models.Vulnerability.asset_id == db_asset.id)
+                .where(models.Vulnerability.title == vuln.title)
+            )
+            db_vuln = result.scalar_one_or_none()
+            if not db_vuln:
+                vuln_data = vuln.model_dump()
+                db_vuln = models.Vulnerability(**vuln_data, asset_id=db_asset.id)
+                db.add(db_vuln)
+                new_vulns.append(db_vuln)
+                logger.info(f"New vulnerability created: {vuln.title} (Severity: {vuln.severity.value})")
+            else:
+                logger.debug(f"Vulnerability already exists: {vuln.title}")
 
     await db.commit()
     await db.refresh(db_asset)
-    return db_asset
+    logger.info(f"Asset {db_asset.value}: {len(new_vulns)} new vulnerabilities successfully added to database")
+    return db_asset, new_vulns
 
 async def get_assets(db: AsyncSession, skip: int = 0, limit: int = 100):
-    result = await db.execute(select(models.Asset).offset(skip).limit(limit))
+    """
+    Récupère tous les assets avec leurs services et vulnérabilités.
+    Utilise selectinload pour charger les relations en une seule requête (évite N+1).
+    """
+    result = await db.execute(
+        select(models.Asset)
+        .options(
+            selectinload(models.Asset.services),
+            selectinload(models.Asset.vulnerabilities)
+        )
+        .offset(skip)
+        .limit(limit)
+    )
     return result.scalars().all()
