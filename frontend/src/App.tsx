@@ -15,8 +15,7 @@ import ScansPage from '@/pages/ScansPage';
 import ScanDetailsPage from '@/pages/ScanDetailsPage';
 import AssetDetailsPage from '@/pages/assets/AssetDetailsPage';
 import SettingsPage from '@/pages/SettingsPage';
-
-
+import VulnerabilitiesPage from '@/pages/vulns/VulnerabilitiesPage';
 
 const queryClient = new QueryClient();
 
@@ -39,6 +38,7 @@ function App() {
                 <Route path="admin/users" element={<AdminUsersPage />} />
                 <Route path="admin/scans" element={<ScansPage />} />
                 <Route path="admin/scans/:scanId" element={<ScanDetailsPage />} />
+                <Route path="vulnerabilities" element={<VulnerabilitiesPage />} />
                 <Route path="settings" element={<SettingsPage />} />
               </Route>
             ) : (
@@ -49,6 +49,7 @@ function App() {
                 <Route path="assets/:assetId" element={<AssetDetailsPage />} />
                 <Route path="scans" element={<ScansPage />} />
                 <Route path="scans/:scanId" element={<ScanDetailsPage />} />
+                <Route path="vulnerabilities" element={<VulnerabilitiesPage />} />
                 <Route path="settings" element={<SettingsPage />} />
               </Route>
             )}

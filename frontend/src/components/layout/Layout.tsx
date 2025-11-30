@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, Link } from 'react-router-dom';
-import { Shield, LayoutDashboard, Database, Activity, Settings, LogOut, Users } from 'lucide-react';
+import { Shield, LayoutDashboard, Database, Activity, Settings, LogOut, Users, ShieldAlert } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/toaster';
@@ -41,6 +41,10 @@ export default function Layout() {
                                 <Activity className="h-4 w-4" />
                                 Scans
                             </Link>
+                            <Link to="/vulnerabilities" className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-accent hover:text-accent-foreground transition-colors">
+                                <ShieldAlert className="h-4 w-4" />
+                                Vulnerabilities
+                            </Link>
                             <Link to="/settings" className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground rounded-md transition-colors">
                                 <Settings className="h-4 w-4" />
                                 Settings
@@ -59,6 +63,10 @@ export default function Layout() {
                             <Link to="/scans" className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground rounded-md transition-colors">
                                 <Activity className="h-4 w-4" />
                                 Scans
+                            </Link>
+                            <Link to="/vulnerabilities" className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground rounded-md transition-colors">
+                                <ShieldAlert className="h-4 w-4" />
+                                Vulnerabilities
                             </Link>
                             <Link to="/settings" className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground rounded-md transition-colors">
                                 <Settings className="h-4 w-4" />

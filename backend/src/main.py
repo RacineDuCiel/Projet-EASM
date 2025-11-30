@@ -5,7 +5,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from src.db.session import engine, Base
-from src.api.v1.endpoints import programs, scans, assets, monitoring, auth, notifications, settings as settings_router
+from src.api.v1.endpoints import programs, scans, assets, monitoring, auth, notifications, settings as settings_router, vulnerabilities
 from src.core.config import settings
 
 # Rate limiter configuration
@@ -55,6 +55,7 @@ app.include_router(assets.router, prefix="/api/v1", tags=["Assets"])
 app.include_router(monitoring.router, prefix="/api/v1", tags=["Monitoring"])
 app.include_router(notifications.router, prefix="/api/v1", tags=["Notifications"])
 app.include_router(settings_router.router, prefix="/api/v1", tags=["Settings"])
+app.include_router(vulnerabilities.router, prefix="/api/v1/vulnerabilities", tags=["Vulnerabilities"])
 
 @app.get("/health")
 def health_check():

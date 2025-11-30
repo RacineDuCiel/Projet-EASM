@@ -28,6 +28,11 @@ class VulnerabilityBase(BaseModel):
 class VulnerabilityCreate(VulnerabilityBase):
     pass
 
+class VulnerabilityUpdate(BaseModel):
+    status: Optional[VulnStatus] = None
+    severity: Optional[Severity] = None
+    description: Optional[str] = None
+
 class Vulnerability(VulnerabilityBase):
     id: UUID
     asset_id: UUID

@@ -30,7 +30,7 @@ export interface Vulnerability {
     id: string;
     title: string;
     severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
-    status: 'open' | 'closed' | 'ignored';
+    status: 'open' | 'fixed' | 'false_positive';
     description?: string;
     created_at: string;
 }
