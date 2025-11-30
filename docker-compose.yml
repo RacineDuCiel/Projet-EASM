@@ -108,6 +108,14 @@ services:
       - BACKEND_URL=${BACKEND_URL:-http://backend:8000}
       - HTTP_TIMEOUT=${HTTP_TIMEOUT:-30}
       - SCAN_PORTS=${SCAN_PORTS:-80,443,3000-3010,4200,5000-5010,8000-8010,8080-8090}
+      # Naabu Config
+      - NAABU_PORTS=${NAABU_PORTS:-80,443,3000-3010,4200,5000-5010,8000-8010,8080-8090}
+      - NAABU_RATE_LIMIT=${NAABU_RATE_LIMIT:-1000}
+      # Nuclei Config
+      - NUCLEI_RATE_LIMIT=${NUCLEI_RATE_LIMIT:-150}
+      - NUCLEI_TIMEOUT=${NUCLEI_TIMEOUT:-5}
+      - NUCLEI_RETRIES=${NUCLEI_RETRIES:-1}
+      - NUCLEI_SEVERITY=${NUCLEI_SEVERITY:-info,low,medium,high,critical}
     restart: unless-stopped
 
   beat:
@@ -136,14 +144,17 @@ services:
   # ----------------------------------------
   flower:
     image: mher/flower
-    command: celery --broker=redis://redis:6379/0 flower --port=5555
+    command: celery --broker=redis://redis:6379/0 flower --port=5555 --persistent=True --db=/data/flower.db --max_tasks=10000
     ports:
       - "5555:5555"
     depends_on:
       redis:
         condition: service_healthy
+    volumes:
+      - flower_data:/data
     environment:
       - CELERY_BROKER_URL=${REDIS_URL:-redis://redis:6379/0}
+      # - FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH:-admin:admin} # Désactivé temporairement pour debug
     restart: unless-stopped
 
   portainer:
@@ -163,3 +174,4 @@ volumes:
   postgres_data:
   redis_data:
   portainer_data:
+  flower_data:

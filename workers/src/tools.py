@@ -48,12 +48,15 @@ def run_naabu(host: str):
         return []
     
     try:
+        # Configuration from Env
+        ports = os.getenv("NAABU_PORTS", "80,443,3000-3010,4200,5000-5010,8000-8010,8080-8090")
+        rate_limit = os.getenv("NAABU_RATE_LIMIT", "1000")
+        
         # -json: output json
-        # Scan common web ports + extended range for web apps
-        cmd = ["naabu", "-host", ip_address, "-json", "-p", "80,443,3000-3010,4200,5000-5010,8000-8010,8080-8090", "-silent"]
+        cmd = ["naabu", "-host", ip_address, "-json", "-p", ports, "-rate", rate_limit, "-silent"]
         logger.debug(f"Executing Naabu command: {' '.join(cmd)}")
         
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=180)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=300)
         
         open_ports = []
         for line in result.stdout.splitlines():
@@ -92,24 +95,25 @@ def run_nuclei(target: str):
     
     logger.info(f"Running Nuclei on {target}...")
     try:
-        # Enhanced Nuclei command with all severities
-        # -severity: scan for all severity levels (info, low, medium, high, critical)
-        # -rate-limit: avoid overwhelming the target
-        # -timeout: connection timeout per request
-        # -retries: retry failed requests
+        # Configuration from Env
+        rate_limit = os.getenv("NUCLEI_RATE_LIMIT", "150")
+        timeout = os.getenv("NUCLEI_TIMEOUT", "5")
+        retries = os.getenv("NUCLEI_RETRIES", "1")
+        severity = os.getenv("NUCLEI_SEVERITY", "info,low,medium,high,critical")
+        
         cmd = [
             "nuclei",
             "-u", target,
             "-jsonl",
             "-silent",
-            "-severity", "info,low,medium,high,critical",  # Toutes les sévérités
-            "-rate-limit", "150",  # Max 150 requêtes/s
-            "-timeout", "5",  # 5s timeout par requête
-            "-retries", "1"  # 1 retry si échec
+            "-severity", severity,
+            "-rate-limit", rate_limit,
+            "-timeout", timeout,
+            "-retries", retries
         ]
         logger.debug(f"Executing Nuclei command: {' '.join(cmd)}")
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         
         # Log stderr pour diagnostic
         if result.stderr:

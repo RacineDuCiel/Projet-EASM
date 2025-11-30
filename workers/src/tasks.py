@@ -2,6 +2,7 @@ import os
 import requests
 import subprocess
 import logging
+import json
 from celery import Celery, chain, group, chord
 from celery.schedules import crontab
 from . import tools
@@ -41,6 +42,10 @@ app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     task_reject_on_worker_lost=True,
+    # Monitoring / Flower
+    worker_send_task_events=True,
+    task_send_sent_event=True,
+    task_track_started=True,
 )
 
 def log_event(scan_id, message, severity="info"):
