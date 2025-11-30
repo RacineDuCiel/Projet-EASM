@@ -1,7 +1,7 @@
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from .. import crud, schemas, models
-from ..core.celery_utils import celery_app
+from src import crud, schemas, models
+from src.core.celery_utils import celery_app
 
 class ScanService:
     @staticmethod

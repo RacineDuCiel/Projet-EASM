@@ -1,13 +1,12 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
-from .config import settings
+from src.core.config import settings
 
-# DATABASE_URL from centralized config
-# Convert postgresql:// to postgresql+asyncpg://
+# Convert postgresql:// to postgresql+asyncpg:// for async support
 DATABASE_URL = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 
-# Disable SQL echo in production for security and performance
-SQL_ECHO = settings.is_development
+# Disable SQL echo in production
+SQL_ECHO = settings.ENVIRONMENT == "development"
 
 engine = create_async_engine(DATABASE_URL, echo=SQL_ECHO)
 

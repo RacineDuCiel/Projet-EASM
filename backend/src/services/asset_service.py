@@ -2,8 +2,8 @@ from uuid import UUID
 from typing import List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import BackgroundTasks
-from .. import crud, schemas, models
-from ..notifications.manager import NotificationManager
+from src import crud, schemas, models
+from src.notifications.manager import NotificationManager
 
 class AssetService:
     def __init__(self):

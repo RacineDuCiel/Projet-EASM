@@ -2,19 +2,27 @@ import subprocess
 import json
 import os
 import shutil
+import logging
+import socket
+from typing import List, Dict, Any
 
-def run_subfinder(domain: str):
+logger = logging.getLogger(__name__)
+
+def check_tool(tool_name: str) -> bool:
+    """Check if a tool is installed and available in PATH."""
+    return shutil.which(tool_name) is not None
+
+def run_subfinder(domain: str) -> List[str]:
     """
     Runs subfinder to discover subdomains.
     Returns a list of unique subdomains found.
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    
+    if not check_tool("subfinder"):
+        logger.error("Subfinder not found in PATH")
+        return []
+
     logger.info(f"Running Subfinder on {domain}...")
     try:
-        # -silent: only output subdomains
-        # -all: use all sources
         cmd = ["subfinder", "-d", domain, "-silent", "-all"]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=120)
         subdomains = [line.strip() for line in result.stdout.splitlines() if line.strip()]
@@ -27,19 +35,17 @@ def run_subfinder(domain: str):
         logger.error(f"Subfinder failed on {domain}: {e.stderr}")
         return []
 
-def run_naabu(host: str):
+def run_naabu(host: str) -> List[Dict[str, Any]]:
     """
     Runs naabu to scan ports on a host.
     Returns a list of open ports with metadata.
     """
-    import logging
-    import socket
-    logger = logging.getLogger(__name__)
-    
+    if not check_tool("naabu"):
+        logger.error("Naabu not found in PATH")
+        return []
+
     logger.info(f"Running Naabu on {host}...")
     
-    # Naabu requires IP address, not hostname
-    # Resolve hostname to IP first
     try:
         ip_address = socket.gethostbyname(host)
         logger.info(f"Resolved {host} to {ip_address}")
@@ -48,11 +54,9 @@ def run_naabu(host: str):
         return []
     
     try:
-        # Configuration from Env
         ports = os.getenv("NAABU_PORTS", "80,443,3000-3010,4200,5000-5010,8000-8010,8080-8090")
         rate_limit = os.getenv("NAABU_RATE_LIMIT", "1000")
         
-        # -json: output json
         cmd = ["naabu", "-host", ip_address, "-json", "-p", ports, "-rate", rate_limit, "-silent"]
         logger.debug(f"Executing Naabu command: {' '.join(cmd)}")
         
@@ -69,11 +73,10 @@ def run_naabu(host: str):
                     "service_name": "unknown"
                 })
             except json.JSONDecodeError:
-                logger.warning(f"Failed to parse Naabu JSON output: {line[:100]}")
                 pass
         
         if not open_ports:
-             logger.warning(f"Naabu completed but found NO open ports on {host} ({ip_address}). Stderr: {result.stderr}")
+             logger.warning(f"Naabu completed but found NO open ports on {host} ({ip_address})")
         else:
              logger.info(f"Naabu found {len(open_ports)} open ports on {host} ({ip_address})")
              
@@ -85,17 +88,17 @@ def run_naabu(host: str):
         logger.error(f"Naabu failed on {host}: {e.stderr}")
         return []
 
-def run_nuclei(target: str):
+def run_nuclei(target: str) -> List[Dict[str, Any]]:
     """
     Runs Nuclei to scan for vulnerabilities.
     Returns a list of findings (vulnerabilities).
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    
+    if not check_tool("nuclei"):
+        logger.error("Nuclei not found in PATH")
+        return []
+
     logger.info(f"Running Nuclei on {target}...")
     try:
-        # Configuration from Env
         rate_limit = os.getenv("NUCLEI_RATE_LIMIT", "150")
         timeout = os.getenv("NUCLEI_TIMEOUT", "5")
         retries = os.getenv("NUCLEI_RETRIES", "1")
@@ -115,10 +118,6 @@ def run_nuclei(target: str):
         
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         
-        # Log stderr pour diagnostic
-        if result.stderr:
-            logger.debug(f"Nuclei stderr: {result.stderr[:500]}")
-        
         findings = []
         for line in result.stdout.splitlines():
             if not line.strip(): continue
@@ -131,12 +130,10 @@ def run_nuclei(target: str):
                     "status": "open"
                 })
             except json.JSONDecodeError:
-                logger.warning(f"Failed to parse Nuclei JSON output: {line[:100]}")
                 pass
         
         if not findings:
             logger.warning(f"Nuclei completed but found NO vulnerabilities on {target}.")
-            logger.warning(f"Exit code: {result.returncode}, Stderr: {result.stderr[:200]}")
         else:
             logger.info(f"Nuclei scan completed on {target}: {len(findings)} vulnerabilities found")
             
@@ -146,15 +143,11 @@ def run_nuclei(target: str):
         return []
 
 def normalize_severity(severity: str) -> str:
-    """
-    Normalizes Nuclei severity to match backend Enum.
-    """
+    """Normalizes Nuclei severity to match backend Enum."""
     if not severity:
         return "info"
     
     severity = severity.lower()
-    
-    # Mapping
     mapping = {
         "informational": "info",
         "unknown": "info",
@@ -164,6 +157,4 @@ def normalize_severity(severity: str) -> str:
         "high": "high",
         "critical": "critical"
     }
-    
     return mapping.get(severity, "info")
-

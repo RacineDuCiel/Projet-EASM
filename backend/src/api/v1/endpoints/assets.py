@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
-from .. import crud, schemas, database
+from src import crud, schemas
+from src.db import session as database
 
 router = APIRouter(
     prefix="/assets",

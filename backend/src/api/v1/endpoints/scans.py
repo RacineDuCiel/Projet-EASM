@@ -4,9 +4,10 @@ from typing import List
 from uuid import UUID
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from .. import crud, schemas, database
-from ..services.scan_service import ScanService
-from ..services.asset_service import AssetService
+from src import crud, schemas
+from src.db import session as database
+from src.services.scan_service import ScanService
+from src.services.asset_service import AssetService
 
 router = APIRouter(
     prefix="/scans",

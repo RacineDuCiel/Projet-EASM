@@ -32,7 +32,7 @@ def main():
     # 1. Register
     print_step("Registering new user...")
     try:
-        resp = requests.post(f"{API_URL}/auth/users/", json={
+        resp = requests.post(f"{API_URL}/api/v1/auth/users/", json={
             "username": USERNAME,
             "password": PASSWORD
         })
@@ -47,7 +47,7 @@ def main():
 
     # 2. Login
     print_step("Logging in...")
-    resp = requests.post(f"{API_URL}/auth/token", data={
+    resp = requests.post(f"{API_URL}/api/v1/auth/token", data={
         "username": USERNAME,
         "password": PASSWORD
     })
@@ -61,7 +61,7 @@ def main():
     # 3. Test Notification Configuration (New Feature)
     print_step("Testing Discord Webhook Configuration...")
     try:
-        resp = requests.post(f"{API_URL}/notifications/test", headers=headers)
+        resp = requests.post(f"{API_URL}/api/v1/notifications/test", headers=headers)
         if resp.status_code == 200:
             print_success("Test notification sent successfully! Check your Discord.")
         else:
@@ -72,7 +72,7 @@ def main():
 
     # 4. Create Program
     print_step("Creating Program...")
-    resp = requests.post(f"{API_URL}/programs/", json={"name": "Notification Test"}, headers=headers)
+    resp = requests.post(f"{API_URL}/api/v1/programs/", json={"name": "Notification Test"}, headers=headers)
     if resp.status_code != 200:
         print_error(f"Failed to create program: {resp.text}")
     program_id = resp.json()["id"]
@@ -80,7 +80,7 @@ def main():
 
     # 5. Create Scope (using 'hostname' type for internal Docker service)
     print_step(f"Adding Scope {TARGET}...")
-    resp = requests.post(f"{API_URL}/programs/{program_id}/scopes/", json={
+    resp = requests.post(f"{API_URL}/api/v1/programs/{program_id}/scopes/", json={
         "scope_type": "hostname",  # Utilise le nouveau type pour services internes
         "value": TARGET
     }, headers=headers)
@@ -112,7 +112,7 @@ def main():
 
     # 6. Launch Scan
     print_step("Launching Active Scan...")
-    resp = requests.post(f"{API_URL}/scans/", json={
+    resp = requests.post(f"{API_URL}/api/v1/scans/", json={
         "scope_id": scope_id,
         "scan_type": "active"
     }, headers=headers)
@@ -131,13 +131,13 @@ def main():
         # Check Scan Status
         try:
             # 1. Get Status
-            resp = requests.get(f"{API_URL}/scans/{scan_id}", headers=headers)
+            resp = requests.get(f"{API_URL}/api/v1/scans/{scan_id}", headers=headers)
             if resp.status_code == 200:
                 scan_data = resp.json()
                 status = scan_data.get("status")
                 
                 # 2. Get Events
-                events_resp = requests.get(f"{API_URL}/scans/{scan_id}/events", headers=headers)
+                events_resp = requests.get(f"{API_URL}/api/v1/scans/{scan_id}/events", headers=headers)
                 if events_resp.status_code == 200:
                     events = events_resp.json()
                     # Sort by created_at just in case
@@ -175,7 +175,7 @@ def main():
     print_step("Checking Findings...")
     
     # We need to find the asset first
-    resp = requests.get(f"{API_URL}/assets/", headers=headers)
+    resp = requests.get(f"{API_URL}/api/v1/assets/", headers=headers)
     assets = resp.json()
     target_asset = next((a for a in assets if a["value"] == TARGET and a["scope_id"] == scope_id), None)
     

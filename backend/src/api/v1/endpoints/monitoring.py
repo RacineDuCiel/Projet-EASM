@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from ..database import get_db
-from ..models import Program, Asset, Scan, Vulnerability, ScanStatus, Severity
+from src.db.session import get_db
+from src.models import Program, Asset, Scan, Vulnerability, ScanStatus, Severity
 
 router = APIRouter(
     prefix="/monitoring",

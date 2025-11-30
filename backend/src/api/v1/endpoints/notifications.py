@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from .. import database, models, schemas
+from src import models, schemas
+from src.db import session as database
 from .auth import get_current_user
-from ..notifications.discord import DiscordProvider
+from src.notifications.discord import DiscordProvider
 
 router = APIRouter(
     prefix="/notifications",
