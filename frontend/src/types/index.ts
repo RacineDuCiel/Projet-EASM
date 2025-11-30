@@ -32,6 +32,7 @@ export interface Vulnerability {
     severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
     status: 'open' | 'closed' | 'ignored';
     description?: string;
+    created_at: string;
 }
 
 export interface Asset {

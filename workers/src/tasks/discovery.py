@@ -15,6 +15,16 @@ def run_scan(target, scan_id):
     """
     logger.info(f"Démarrage de l'orchestration pour {target} (ID: {scan_id})")
     
+    # Update status to running
+    try:
+        requests.post(
+            f"{BACKEND_URL}/scans/{scan_id}/results",
+            json={"status": "running", "assets": []},
+            timeout=HTTP_TIMEOUT
+        )
+    except Exception as e:
+        logger.error(f"Failed to update scan status to running: {e}")
+
     workflow = chain(
         discovery_task.s(target, scan_id),
         schedule_asset_scans.s(scan_id)

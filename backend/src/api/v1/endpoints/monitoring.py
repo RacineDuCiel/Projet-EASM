@@ -2,8 +2,11 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from src.db.session import get_db
-from src import models
+from src import models, schemas
 from src.models import Program, Asset, Scan, Vulnerability, ScanStatus, Severity
+
+# ... (existing code)
+
 
 router = APIRouter(
     prefix="/monitoring",
@@ -28,7 +31,7 @@ async def get_stats(db: AsyncSession = Depends(get_db), current_user: User = Dep
         
         # Scans
         total_scans = await db.scalar(select(func.count()).select_from(Scan))
-        running_scans = await db.scalar(select(func.count()).select_from(Scan).where(Scan.status == ScanStatus.running))
+        running_scans = await db.scalar(select(func.count()).select_from(Scan).where(Scan.status.in_([ScanStatus.running, ScanStatus.pending])))
         failed_scans = await db.scalar(select(func.count()).select_from(Scan).where(Scan.status == ScanStatus.failed))
         
         # Vulnerabilities
@@ -63,7 +66,7 @@ async def get_stats(db: AsyncSession = Depends(get_db), current_user: User = Dep
             .select_from(Scan)
             .join(models.Scope)
             .where(models.Scope.program_id == program_id)
-            .where(Scan.status == ScanStatus.running)
+            .where(Scan.status.in_([ScanStatus.running, ScanStatus.pending]))
         )
         failed_scans = await db.scalar(
             select(func.count())
@@ -112,3 +115,81 @@ async def get_stats(db: AsyncSession = Depends(get_db), current_user: User = Dep
             "high": high_vulns
         }
     }
+
+@router.get("/vuln-trend")
+async def get_vuln_trend(db: AsyncSession = Depends(get_db), current_user: User = Depends(auth.get_current_user)):
+    """
+    Returns vulnerability counts grouped by date (last 30 days).
+    """
+    from datetime import datetime, timedelta
+    
+    # Simple mock implementation for now as we don't have a history table for vulns yet
+    # In a real system, we would query a 'vulnerability_history' or aggregate 'created_at'
+    
+    # For now, let's return a static trend based on current data to demonstrate the UI
+    # Or better, let's group by created_at if we have enough data
+    
+    # Group by date
+    query = select(
+        func.date_trunc('day', Vulnerability.created_at).label('date'),
+        func.count(Vulnerability.id).label('count')
+    ).group_by('date').order_by('date')
+    
+    if current_user.role != "admin":
+        query = query.join(Asset).join(models.Scope).where(models.Scope.program_id == current_user.program_id)
+        
+    result = await db.execute(query)
+    rows = result.all()
+    
+    return [{"date": str(row.date).split(' ')[0], "count": row.count} for row in rows]
+
+@router.get("/severity-distribution")
+async def get_severity_distribution(db: AsyncSession = Depends(get_db), current_user: User = Depends(auth.get_current_user)):
+    """
+    Returns full breakdown of vulnerabilities by severity.
+    """
+    query = select(
+        Vulnerability.severity,
+        func.count(Vulnerability.id).label('count')
+    ).group_by(Vulnerability.severity)
+    
+    if current_user.role != "admin":
+        query = query.join(Asset).join(models.Scope).where(models.Scope.program_id == current_user.program_id)
+        
+    result = await db.execute(query)
+    rows = result.all()
+    
+    # Ensure all severities are present even if 0
+    counts = {sev.value: 0 for sev in Severity}
+    for row in rows:
+        counts[row.severity] = row.count
+        
+    return [{"name": k, "value": v} for k, v in counts.items()]
+
+@router.get("/recent-vulns", response_model=list[schemas.Vulnerability])
+async def get_recent_vulnerabilities(db: AsyncSession = Depends(get_db), current_user: User = Depends(auth.get_current_user)):
+    """
+    Returns latest 5 vulnerabilities (High/Critical).
+    """
+    query = select(Vulnerability).where(
+        Vulnerability.severity.in_([Severity.high, Severity.critical])
+    ).order_by(Vulnerability.created_at.desc()).limit(5)
+    
+    if current_user.role != "admin":
+        query = query.join(Asset).join(models.Scope).where(models.Scope.program_id == current_user.program_id)
+        
+    result = await db.execute(query)
+    return result.scalars().all()
+
+@router.get("/recent-assets", response_model=list[schemas.Asset])
+async def get_recent_assets(db: AsyncSession = Depends(get_db), current_user: User = Depends(auth.get_current_user)):
+    """
+    Returns latest 5 discovered assets.
+    """
+    query = select(Asset).order_by(Asset.first_seen.desc()).limit(5)
+    
+    if current_user.role != "admin":
+        query = query.join(models.Scope).where(models.Scope.program_id == current_user.program_id)
+        
+    result = await db.execute(query)
+    return result.scalars().all()
