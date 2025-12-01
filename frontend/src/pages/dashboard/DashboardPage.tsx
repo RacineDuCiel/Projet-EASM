@@ -128,6 +128,47 @@ export default function DashboardPage() {
                 <RecentVulns vulns={recentVulns || []} />
                 <RecentAssets assets={recentAssets || []} />
             </div>
+
+            {/* Worker Status (Admin Only) */}
+            <WorkerStatus />
         </div>
+    );
+}
+
+function WorkerStatus() {
+    const { data: workers } = useQuery({
+        queryKey: ['workers'],
+        queryFn: async () => {
+            try {
+                const response = await api.get<{ name: string, status: string }[]>('/monitoring/workers');
+                return response.data;
+            } catch (e) {
+                return [];
+            }
+        },
+        refetchInterval: 10000,
+    });
+
+    if (!workers || workers.length === 0) return null;
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>System Health</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-4">
+                    {workers.map((worker) => (
+                        <div key={worker.name} className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className={`h-2.5 w-2.5 rounded-full ${worker.status === 'online' ? 'bg-green-500' : 'bg-red-500'}`} />
+                                <span className="font-medium">{worker.name}</span>
+                            </div>
+                            <span className="text-sm text-muted-foreground capitalize">{worker.status}</span>
+                        </div>
+                    ))}
+                </div>
+            </CardContent>
+        </Card>
     );
 }

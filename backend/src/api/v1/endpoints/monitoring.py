@@ -193,3 +193,32 @@ async def get_recent_assets(db: AsyncSession = Depends(get_db), current_user: Us
         
     result = await db.execute(query)
     return result.scalars().all()
+
+@router.get("/workers")
+async def get_worker_status(current_user: User = Depends(auth.get_current_user)):
+    """
+    Get Celery workers status.
+    Only for admins.
+    """
+    if current_user.role != "admin":
+        return []
+        
+    from src.celery_app import celery_app
+    
+    # Inspect workers
+    i = celery_app.control.inspect()
+    
+    # Ping workers to see who is alive
+    active = i.ping()
+    if not active:
+        return []
+        
+    workers = []
+    for worker_name, response in active.items():
+        workers.append({
+            "name": worker_name,
+            "status": "online" if response else "offline",
+            "last_seen": "now" # In a real app we might track this
+        })
+        
+    return workers

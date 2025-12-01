@@ -100,3 +100,57 @@ async def update_vulnerability(
         
     vulnerability = await crud.vulnerability.update(db, db_obj=vulnerability, obj_in=vuln_in)
     return vulnerability
+
+@router.get("/export/csv")
+async def export_vulnerabilities(
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """
+    Export vulnerabilities to CSV.
+    """
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+
+    # Reuse the logic to fetch vulnerabilities based on user role
+    program_id = None
+    if current_user.role != models.UserRole.admin:
+        program_id = current_user.program_id
+
+    # Fetch all vulnerabilities (no pagination for export)
+    # We might need a new CRUD method or just use get_multi with large limit
+    # For now, let's use a large limit
+    vulnerabilities = await crud.vulnerability.get_multi(
+        db,
+        skip=0,
+        limit=10000, # Reasonable limit for MVP
+        program_id=program_id
+    )
+
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow(['ID', 'Title', 'Severity', 'Status', 'Asset ID', 'Service ID', 'Created At'])
+    
+    # Data
+    for vuln in vulnerabilities:
+        writer.writerow([
+            str(vuln.id),
+            vuln.title,
+            vuln.severity,
+            vuln.status,
+            str(vuln.asset_id),
+            str(vuln.service_id) if vuln.service_id else '',
+            vuln.created_at.isoformat() if vuln.created_at else ''
+        ])
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=vulnerabilities.csv"}
+    )
