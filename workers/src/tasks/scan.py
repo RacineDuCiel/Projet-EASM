@@ -87,35 +87,33 @@ def vuln_scan_task(asset, scan_id):
         
         targets = list(set(targets))
         
-        vulns = []
-        for target_url in targets:
-            target_vulns = tools.run_nuclei(target_url)
-            vulns.extend(target_vulns)
-        
-        unique_vulns = []
+        all_vulns = []
         seen_titles = set()
-        for v in vulns:
-            if v["title"] not in seen_titles:
-                unique_vulns.append(v)
-                seen_titles.add(v["title"])
         
-        asset["vulnerabilities"] = unique_vulns
-        logger.info(f"Vulnerability scan completed for {domain}: {len(unique_vulns)} unique vulnerabilities found")
-        log_event(scan_id, f"Vuln scan finished on {domain}. Found {len(unique_vulns)} vulnerabilities.")
+        # Batch processing configuration
+        BATCH_SIZE = 5
+        current_batch = []
         
-        if unique_vulns:
-            try:
-                payload = [asset]
-                resp = requests.post(
-                    f"{BACKEND_URL}/scans/{scan_id}/assets",
-                    json=payload,
-                    timeout=HTTP_TIMEOUT
-                )
-                resp.raise_for_status()
-                logger.info(f"Successfully sent {len(unique_vulns)} vulnerabilities to backend for {domain}")
-            except Exception as e:
-                logger.error(f"Failed to send vulnerabilities to backend for {domain}: {e}", exc_info=True)
-                raise
+        for target_url in targets:
+            # Consume the generator
+            for finding in tools.run_nuclei(target_url):
+                if finding["title"] not in seen_titles:
+                    seen_titles.add(finding["title"])
+                    current_batch.append(finding)
+                    all_vulns.append(finding)
+                    
+                    # If batch is full, send it
+                    if len(current_batch) >= BATCH_SIZE:
+                        _send_vuln_batch(asset, current_batch, scan_id, domain)
+                        current_batch = [] # Reset batch
+
+        # Send remaining findings
+        if current_batch:
+            _send_vuln_batch(asset, current_batch, scan_id, domain)
+        
+        asset["vulnerabilities"] = all_vulns
+        logger.info(f"Vulnerability scan completed for {domain}: {len(all_vulns)} unique vulnerabilities found")
+        log_event(scan_id, f"Vuln scan finished on {domain}. Found {len(all_vulns)} vulnerabilities.")
         
         return asset
     except Exception as e:
@@ -123,3 +121,23 @@ def vuln_scan_task(asset, scan_id):
         log_event(scan_id, f"Vuln scan failed on {domain}: {str(e)}", "error")
         asset["vulnerabilities"] = []
         return asset
+
+def _send_vuln_batch(asset, vulns, scan_id, domain):
+    """Helper to send a batch of vulnerabilities to the backend."""
+    try:
+        # Create a copy of asset with only this batch of vulnerabilities
+        asset_update = asset.copy()
+        asset_update["vulnerabilities"] = vulns
+        
+        payload = [asset_update]
+        resp = requests.post(
+            f"{BACKEND_URL}/scans/{scan_id}/assets",
+            json=payload,
+            timeout=HTTP_TIMEOUT
+        )
+        resp.raise_for_status()
+        logger.info(f"Successfully sent batch of {len(vulns)} vulnerabilities to backend for {domain}")
+    except Exception as e:
+        logger.error(f"Failed to send vulnerability batch to backend for {domain}: {e}", exc_info=True)
+        # We don't raise here to allow scanning to continue, but we log the error.
+        # Ideally, we might want to retry or track failed batches.

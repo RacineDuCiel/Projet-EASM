@@ -15,6 +15,7 @@ class ScanStatus(str, enum.Enum):
     running = "running"
     completed = "completed"
     failed = "failed"
+    stopped = "stopped"
 
 class AssetType(str, enum.Enum):
     subdomain = "subdomain"

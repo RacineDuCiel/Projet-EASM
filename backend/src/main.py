@@ -8,7 +8,7 @@ from starlette.middleware.cors import CORSMiddleware as StarletteCORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
 
-from src.db.session import engine, Base
+from src.db.session import engine, Base, AsyncSessionLocal
 from src.api.v1.endpoints import programs, scans, assets, monitoring, auth, notifications, settings as settings_router, vulnerabilities
 from src.core.config import settings
 from src.core.logging import setup_logging
@@ -28,6 +28,22 @@ async def lifespan(app: FastAPI):
     
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Recovery: Resume interrupted scans
+    async with AsyncSessionLocal() as db:
+        try:
+            # Patch Enum if needed (PostgreSQL specific)
+            from sqlalchemy import text
+            try:
+                await db.execute(text("ALTER TYPE scanstatus ADD VALUE IF NOT EXISTS 'stopped'"))
+                await db.commit()
+            except Exception as e:
+                logger.warning(f"Could not alter enum type (might be sqlite or already exists): {e}")
+
+            from src.services.scan_service import ScanService
+            await ScanService.resume_interrupted_scans(db)
+        except Exception as e:
+            logger.error(f"Failed to run scan recovery: {e}")
     
     yield
     

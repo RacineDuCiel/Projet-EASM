@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
 import type { Scan, Program } from '@/types';
+import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -10,8 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Link } from 'react-router-dom';
-import { Play, Loader2, RefreshCw, Eye } from 'lucide-react';
+import { Play, Loader2, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function ScansPage() {
@@ -20,6 +21,7 @@ export default function ScansPage() {
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [selectedScope, setSelectedScope] = useState('');
     const [selectedType, setSelectedType] = useState('passive');
+    const { toast } = useToast();
 
     // Fetch Scans
     const { data: scans, isLoading: isLoadingScans } = useQuery({
@@ -55,8 +57,44 @@ export default function ScansPage() {
             queryClient.invalidateQueries({ queryKey: ['scans'] });
             setIsCreateOpen(false);
             setSelectedScope('');
+            toast({
+                title: "Scan started",
+                description: "The scan has been successfully launched.",
+            });
         },
+        onError: () => {
+            toast({
+                title: "Error",
+                description: "Failed to launch scan.",
+                variant: "destructive",
+            });
+        }
     });
+
+    // Stop Scan Mutation
+    const stopScanMutation = useMutation({
+        mutationFn: async (scanId: string) => {
+            await api.post(`/scans/${scanId}/stop`);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['scans'] });
+            toast({
+                title: "Scan stopped",
+                description: "The scan has been successfully stopped.",
+            });
+        },
+        onError: () => {
+            toast({
+                title: "Error",
+                description: "Failed to stop the scan.",
+                variant: "destructive",
+            });
+        }
+    });
+
+    const handleStopScan = async (scanId: string) => {
+        await stopScanMutation.mutateAsync(scanId);
+    };
 
     const handleCreateScan = () => {
         if (selectedScope) {
@@ -69,6 +107,7 @@ export default function ScansPage() {
             case 'completed': return 'bg-green-100 text-green-800 hover:bg-green-100';
             case 'running': return 'bg-blue-100 text-blue-800 hover:bg-blue-100';
             case 'failed': return 'bg-red-100 text-red-800 hover:bg-red-100';
+            case 'stopped': return 'bg-orange-100 text-orange-800 hover:bg-orange-100';
             default: return 'bg-gray-100 text-gray-800 hover:bg-gray-100';
         }
     };
@@ -181,12 +220,29 @@ export default function ScansPage() {
                                                 : '-'}
                                         </TableCell>
                                         <TableCell>
+                                            <div className="flex justify-end gap-2">
+                                                <Link to={`/scans/${scan.id}`}>
+                                                    <Button variant="outline" size="sm">
+                                                        View Details
+                                                    </Button>
+                                                </Link>
+                                                {(scan.status === 'running' || scan.status === 'pending') && user?.role === 'admin' && (
+                                                    <Button
+                                                        variant="destructive"
+                                                        size="sm"
+                                                        onClick={() => handleStopScan(scan.id)}
+                                                        disabled={stopScanMutation.isPending}
+                                                    >
+                                                        Stop
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))}
                                 {scans?.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={5} className="text-center text-muted-foreground">
+                                        <TableCell colSpan={6} className="text-center text-muted-foreground">
                                             No scans found.
                                         </TableCell>
                                     </TableRow>
@@ -196,6 +252,6 @@ export default function ScansPage() {
                     )}
                 </CardContent>
             </Card>
-        </div >
+        </div>
     );
 }

@@ -85,4 +85,129 @@ class ScanService:
                     if new_scan:
                         triggered_scans.append(new_scan.id)
                         
+                        
         return triggered_scans
+
+    @staticmethod
+    async def resume_interrupted_scans(db: AsyncSession):
+        """
+        Finds all scans with status 'running' and restarts them.
+        This is intended to be run on application startup to handle crashes/restarts.
+        """
+        from sqlalchemy import select
+        from src.models import Scan, ScanEvent
+        from src.models.enums import ScanStatus
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        # Find all running scans
+        result = await db.execute(
+            select(Scan).where(Scan.status == ScanStatus.running)
+        )
+        running_scans = result.scalars().all()
+        
+        count = 0
+        for scan in running_scans:
+            # Log the interruption
+            event = ScanEvent(
+                scan_id=scan.id,
+                message="Scan interrupted by system restart. Resuming...",
+                severity="info"
+            )
+            db.add(event)
+            
+            # Re-queue the task
+            # We need to fetch the scope value first
+            # Since scope is lazy loaded, we might need to ensure it's available or fetch it
+            # In the model definition, scope is lazy="selectin", so it should be there if we awaited the query correctly?
+            # Actually result.scalars().all() with async session and selectin load should work.
+            # Let's verify if scope is loaded.
+            
+            if scan.scope:
+                 celery_app.send_task(
+                    'src.tasks.run_scan', 
+                    args=[scan.scope.value, str(scan.id)], 
+                    queue='discovery'
+                )
+                 count += 1
+                 logger.info(f"Resumed scan {scan.id} for scope {scan.scope.value}")
+            else:
+                logger.error(f"Could not resume scan {scan.id}: Scope not found or not loaded.")
+                scan.status = ScanStatus.failed
+                db.add(ScanEvent(scan_id=scan.id, message="Failed to resume: Scope not found", severity="error"))
+            
+        if count > 0:
+            await db.commit()
+            logger.info(f"Resumed {count} interrupted scans.")
+        
+        return count
+
+    @staticmethod
+    async def stop_scan(db: AsyncSession, scan_id: UUID):
+        """
+        Stops a running scan by revoking its Celery tasks and updating DB status.
+        """
+        from src.models import Scan, ScanEvent
+        from src.models.enums import ScanStatus
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        scan = await crud.get_scan(db, scan_id)
+        if not scan:
+            return None
+            
+        if scan.status not in [ScanStatus.running, ScanStatus.pending]:
+            return scan
+            
+        # 1. Revoke Celery Tasks
+        # We need to find active tasks for this scan_id.
+        # This is tricky because we don't store the celery task ID in the DB (we could, but we don't right now).
+        # However, we can inspect active tasks and match the args.
+        
+        i = celery_app.control.inspect()
+        active = i.active()
+        reserved = i.reserved()
+        
+        tasks_to_revoke = []
+        
+        def find_tasks(worker_tasks):
+            if not worker_tasks: return
+            for worker, tasks in worker_tasks.items():
+                for task in tasks:
+                    # Check args. Our tasks usually have scan_id as the 2nd arg (discovery) or passed in kwargs?
+                    # discovery_task(target, scan_id)
+                    # run_scan(target, scan_id)
+                    # port_scan_task(asset, scan_id)
+                    # vuln_scan_task(asset, scan_id)
+                    
+                    # Args are usually a list.
+                    args = task.get('args', [])
+                    # kwargs = task.get('kwargs', {})
+                    
+                    # Check if scan_id is in args
+                    if str(scan_id) in [str(arg) for arg in args]:
+                        tasks_to_revoke.append(task['id'])
+        
+        find_tasks(active)
+        find_tasks(reserved)
+        
+        if tasks_to_revoke:
+            celery_app.control.revoke(tasks_to_revoke, terminate=True)
+            logger.info(f"Revoked {len(tasks_to_revoke)} tasks for scan {scan_id}")
+            
+        # 2. Update DB
+        scan.status = ScanStatus.stopped
+        from datetime import datetime, timezone
+        scan.completed_at = datetime.now(timezone.utc)
+        
+        db.add(ScanEvent(
+            scan_id=scan.id,
+            message="Scan manually stopped by user.",
+            severity="warning"
+        ))
+        
+        await db.commit()
+        await db.refresh(scan)
+        return scan

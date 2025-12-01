@@ -4,7 +4,7 @@ import os
 import shutil
 import logging
 import socket
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Generator
 
 logger = logging.getLogger(__name__)
 
@@ -94,14 +94,14 @@ def run_naabu(host: str) -> List[Dict[str, Any]]:
         logger.error(f"Unexpected error running Naabu on {host}: {e}")
         return []
 
-def run_nuclei(target: str) -> List[Dict[str, Any]]:
+def run_nuclei(target: str) -> Generator[Dict[str, Any], None, None]:
     """
     Runs Nuclei to scan for vulnerabilities.
-    Returns a list of findings (vulnerabilities).
+    Yields findings (vulnerabilities) as they are found.
     """
     if not check_tool("nuclei"):
         logger.error("Nuclei not found in PATH")
-        return []
+        return
 
     logger.info(f"Running Nuclei on {target}...")
     try:
@@ -122,31 +122,30 @@ def run_nuclei(target: str) -> List[Dict[str, Any]]:
         ]
         logger.debug(f"Executing Nuclei command: {' '.join(cmd)}")
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        
-        findings = []
-        for line in result.stdout.splitlines():
-            if not line.strip(): continue
-            try:
-                data = json.loads(line)
-                findings.append({
-                    "title": data.get("info", {}).get("name"),
-                    "severity": normalize_severity(data.get("info", {}).get("severity")),
-                    "description": data.get("info", {}).get("description"),
-                    "status": "open"
-                })
-            except json.JSONDecodeError:
-                pass
-        
-        if not findings:
-            logger.warning(f"Nuclei completed but found NO vulnerabilities on {target}.")
-        else:
-            logger.info(f"Nuclei scan completed on {target}: {len(findings)} vulnerabilities found")
+        # Use Popen to stream output
+        with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1) as process:
+            if process.stdout:
+                for line in process.stdout:
+                    if not line.strip(): continue
+                    try:
+                        data = json.loads(line)
+                        finding = {
+                            "title": data.get("info", {}).get("name"),
+                            "severity": normalize_severity(data.get("info", {}).get("severity")),
+                            "description": data.get("info", {}).get("description"),
+                            "status": "open"
+                        }
+                        yield finding
+                    except json.JSONDecodeError:
+                        pass
             
-        return findings
+            # Check for errors after process finishes
+            stderr = process.stderr.read() if process.stderr else ""
+            if process.returncode != 0 and stderr:
+                logger.error(f"Nuclei process error on {target}: {stderr}")
+
     except Exception as e:
         logger.error(f"Nuclei failed on {target}: {e}")
-        return []
 
 def normalize_severity(severity: str) -> str:
     """Normalizes Nuclei severity to match backend Enum."""

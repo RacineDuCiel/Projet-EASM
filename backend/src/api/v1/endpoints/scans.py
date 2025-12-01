@@ -124,3 +124,13 @@ async def read_scan(scan_id: UUID, db: AsyncSession = Depends(database.get_db)):
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
     return scan
+
+@router.post("/{scan_id}/stop", response_model=schemas.Scan)
+async def stop_scan(scan_id: UUID, db: AsyncSession = Depends(database.get_db), current_user: User = Depends(auth.get_current_user)):
+    if current_user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="Only admins can stop scans")
+        
+    scan = await ScanService.stop_scan(db, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    return scan
