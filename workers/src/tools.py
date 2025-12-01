@@ -34,6 +34,9 @@ def run_subfinder(domain: str) -> List[str]:
     except subprocess.CalledProcessError as e:
         logger.error(f"Subfinder failed on {domain}: {e.stderr}")
         return []
+    except Exception as e:
+        logger.error(f"Unexpected error running Subfinder on {domain}: {e}")
+        return []
 
 def run_naabu(host: str) -> List[Dict[str, Any]]:
     """
@@ -86,6 +89,9 @@ def run_naabu(host: str) -> List[Dict[str, Any]]:
         return []
     except subprocess.CalledProcessError as e:
         logger.error(f"Naabu failed on {host}: {e.stderr}")
+        return []
+    except Exception as e:
+        logger.error(f"Unexpected error running Naabu on {host}: {e}")
         return []
 
 def run_nuclei(target: str) -> List[Dict[str, Any]]:

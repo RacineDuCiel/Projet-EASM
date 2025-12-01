@@ -1,5 +1,7 @@
 import os
 from celery import Celery
+from celery.signals import worker_ready
+from src.core.logging import setup_logging
 
 # Configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
@@ -20,6 +22,10 @@ app.conf.update(
     task_send_sent_event=True,
     task_track_started=True,
 )
+
+@worker_ready.connect
+def configure_logging(sender=None, **kwargs):
+    setup_logging()
 
 # Imports tasks to register them
 import src.tasks.discovery
