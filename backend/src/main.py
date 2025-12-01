@@ -4,9 +4,14 @@ from contextlib import asynccontextmanager
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.cors import CORSMiddleware as StarletteCORSMiddleware
+from fastapi.responses import JSONResponse
+import logging
+
 from src.db.session import engine, Base
 from src.api.v1.endpoints import programs, scans, assets, monitoring, auth, notifications, settings as settings_router, vulnerabilities
 from src.core.config import settings
+from src.core.logging import setup_logging
 
 # Rate limiter configuration
 limiter = Limiter(
@@ -16,11 +21,18 @@ limiter = Limiter(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Create tables
+    # Startup: Configure logging and create tables
+    setup_logging()
+    logger = logging.getLogger("src.main")
+    logger.info("Starting EASM Platform API...")
+    
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
     yield
-    # Shutdown: Close connection (optional, engine handles it)
+    
+    # Shutdown
+    logger.info("Shutting down EASM Platform API...")
 
 app = FastAPI(
     title="EASM Platform API",
@@ -45,22 +57,14 @@ app.add_middleware(
 
 # Add rate limiting
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# Fix CORS for RateLimitExceeded
-from starlette.middleware.cors import CORSMiddleware as StarletteCORSMiddleware
-from fastapi.responses import JSONResponse
 
 async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    """
+    Custom handler for RateLimitExceeded to ensure CORS headers are present.
+    """
     response = _rate_limit_exceeded_handler(request, exc)
-    # Add CORS headers manually since exception handlers might bypass middleware in some cases
-    # or if the middleware stack is not fully traversed for exceptions raised early.
-    # However, usually middleware handles it. 
-    # But for safety, we can ensure headers are present.
-    # Actually, a better way is to ensure CORSMiddleware is the first one.
-    # It is already added.
-    # But slowapi handler returns a plain Response/JSONResponse.
-    # Let's explicitly add headers.
+    
+    # Manually add CORS headers for rate limit responses
     origin = request.headers.get("origin")
     if origin in origins:
         response.headers["Access-Control-Allow-Origin"] = origin
