@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     
     # Security
     SECRET_KEY: str
+    FIRST_SUPERUSER: str = "admin"
+    FIRST_SUPERUSER_PASSWORD: str = "ChangeMe123!"
     
     # Database
     POSTGRES_USER: str = "easm_user"

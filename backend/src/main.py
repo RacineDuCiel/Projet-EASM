@@ -40,8 +40,12 @@ async def lifespan(app: FastAPI):
 
             from src.services.scan_service import ScanService
             await ScanService.resume_interrupted_scans(db)
+            
+            # Bootstrapping: Create superuser if needed
+            from src.db.init_db import init_db
+            await init_db(db)
         except Exception as e:
-            logger.error(f"Failed to run scan recovery: {e}")
+            logger.error(f"Failed to run startup tasks: {e}")
     
     yield
     

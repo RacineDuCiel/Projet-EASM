@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import timedelta
 from src.db import session as database
 from src import models, schemas, crud
@@ -74,7 +74,20 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     return {"access_token": access_token, "token_type": "bearer", "user": user}
 
 @router.post("/users/", response_model=schemas.User)
-async def create_user(user: schemas.UserCreate, db: AsyncSession = Depends(database.get_db)):
+async def create_user(
+    user: schemas.UserCreate, 
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(database.get_db)
+):
+    if current_user.role != models.UserRole.admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # Secure Admin Creation
+    if user.role == models.UserRole.admin:
+        if not user.current_password:
+             raise HTTPException(status_code=400, detail="Current password required to create an administrator")
+        if not auth.verify_password(user.current_password, current_user.hashed_password):
+             raise HTTPException(status_code=401, detail="Invalid current password")
     # Check if user exists
     result = await db.execute(select(models.User).where(models.User.username == user.username))
     if result.scalar_one_or_none():
@@ -141,6 +154,21 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Check for Last Admin Standing if deactivating or demoting
+    is_demoting = user_in.role is not None and user_in.role != models.UserRole.admin
+    is_deactivating = user_in.is_active is not None and user_in.is_active is False
+    
+    if (is_demoting or is_deactivating) and user.role == models.UserRole.admin and user.is_active:
+        # Count active admins
+        active_admins_count = await db.scalar(
+            select(func.count(models.User.id)).where(
+                models.User.role == models.UserRole.admin,
+                models.User.is_active == True
+            )
+        )
+        if active_admins_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot deactivate or demote the last active administrator.")
+
     # Update fields
     if user_in.username is not None:
         # Check uniqueness if changing username
@@ -195,6 +223,17 @@ async def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
         
+    # Check for Last Admin Standing
+    if user.role == models.UserRole.admin and user.is_active:
+        active_admins_count = await db.scalar(
+            select(func.count(models.User.id)).where(
+                models.User.role == models.UserRole.admin,
+                models.User.is_active == True
+            )
+        )
+        if active_admins_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the last active administrator.")
+            
     await db.delete(user)
     await db.commit()
     return
