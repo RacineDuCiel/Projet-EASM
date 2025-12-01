@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict, field_validator
-from typing import List
+from pydantic import BaseModel, ConfigDict, field_validator
+from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 from src.models.enums import ScopeType, ScanFrequency
@@ -35,9 +36,20 @@ class ProgramBase(BaseModel):
     scan_frequency: ScanFrequency = ScanFrequency.never
 
 class ProgramCreate(ProgramBase):
+    @classmethod
+    def validate_program_name(cls, v):
+        return validators.sanitize_string(v, max_length=200)
+
+class ProgramUpdate(BaseModel):
+    name: Optional[str] = None
+    discord_webhook_url: Optional[str] = None
+    scan_frequency: Optional[ScanFrequency] = None
+
     @field_validator('name')
     @classmethod
     def validate_program_name(cls, v):
+        if v is None:
+            return v
         return validators.sanitize_string(v, max_length=200)
 
 class Program(ProgramBase):

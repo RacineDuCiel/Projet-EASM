@@ -7,12 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { UserPlus, Trash2, Shield, User as UserIcon, Loader2 } from 'lucide-react';
+import { UserPlus, Trash2, Shield, User as UserIcon, Loader2, Pencil, Search } from 'lucide-react';
+import { EditUserDialog } from '@/components/admin/EditUserDialog';
 
 export default function AdminUsersPage() {
     const queryClient = useQueryClient();
     const [newUser, setNewUser] = useState({ username: '', password: '', role: 'user', program_id: '' });
     const [createError, setCreateError] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [editingUser, setEditingUser] = useState<User | null>(null);
 
     // Fetch Users
     const { data: users, isLoading: isLoadingUsers, error: usersError } = useQuery({
@@ -72,6 +75,11 @@ export default function AdminUsersPage() {
         setCreateError('');
         createUserMutation.mutate(newUser);
     };
+
+    const filteredUsers = users?.filter(user =>
+        user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (user.program?.name || '').toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
     if (isLoadingUsers) return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>;
     if (usersError) return <div className="p-8 text-destructive">Error loading users. Please check backend logs.</div>;
@@ -154,8 +162,17 @@ export default function AdminUsersPage() {
 
             {/* Users List */}
             <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between">
                     <CardTitle>Users Directory</CardTitle>
+                    <div className="relative w-64">
+                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder="Search users..."
+                            className="pl-8"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -169,7 +186,7 @@ export default function AdminUsersPage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {users?.map((user) => (
+                            {filteredUsers?.map((user) => (
                                 <TableRow key={user.id}>
                                     <TableCell className="font-medium">{user.username}</TableCell>
                                     <TableCell>
@@ -187,16 +204,35 @@ export default function AdminUsersPage() {
                                         </span>
                                     </TableCell>
                                     <TableCell>
-                                        <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteUserMutation.mutate(user.id)}>
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
+                                        <div className="flex items-center gap-2">
+                                            <Button variant="ghost" size="icon" onClick={() => setEditingUser(user)}>
+                                                <Pencil className="h-4 w-4" />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteUserMutation.mutate(user.id)}>
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
                                     </TableCell>
                                 </TableRow>
                             ))}
+                            {filteredUsers?.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                        No users found.
+                                    </TableCell>
+                                </TableRow>
+                            )}
                         </TableBody>
                     </Table>
                 </CardContent>
             </Card>
+
+            <EditUserDialog
+                user={editingUser}
+                open={!!editingUser}
+                onOpenChange={(open) => !open && setEditingUser(null)}
+                programs={programs || []}
+            />
         </div>
     );
 }

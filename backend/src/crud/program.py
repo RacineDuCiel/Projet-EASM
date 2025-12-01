@@ -9,6 +9,21 @@ async def create_program(db: AsyncSession, program: schemas.ProgramCreate):
     db.add(db_program)
     await db.commit()
     await db.refresh(db_program)
+    await db.refresh(db_program)
+    return db_program
+
+async def update_program(db: AsyncSession, program_id: UUID, program_in: schemas.ProgramUpdate):
+    db_program = await get_program(db, program_id)
+    if not db_program:
+        return None
+    
+    update_data = program_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_program, field, value)
+        
+    db.add(db_program)
+    await db.commit()
+    await db.refresh(db_program)
     return db_program
 
 async def get_programs(db: AsyncSession, skip: int = 0, limit: int = 100):

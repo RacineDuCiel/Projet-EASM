@@ -35,6 +35,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     
     if user is None:
         raise credentials_exception
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Account inactive. Please contact your administrator.")
     return user
 
 @router.post("/token", response_model=schemas.TokenWithUser)
@@ -50,6 +52,9 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Account inactive. Please contact your administrator.")
     
     # 3. Create token
     access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -113,6 +118,57 @@ async def read_users(
         .limit(limit)
     )
     return result.scalars().all()
+
+@router.put("/users/{user_id}", response_model=schemas.User)
+async def update_user(
+    user_id: str,
+    user_in: schemas.UserUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(database.get_db)
+):
+    if current_user.role != models.UserRole.admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    from uuid import UUID
+    try:
+        user_uuid = UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user ID format")
+
+    result = await db.execute(select(models.User).where(models.User.id == user_uuid))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Update fields
+    if user_in.username is not None:
+        # Check uniqueness if changing username
+        if user_in.username != user.username:
+            existing = await db.execute(select(models.User).where(models.User.username == user_in.username))
+            if existing.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Username already taken")
+        user.username = user_in.username
+        
+    if user_in.password is not None:
+        user.hashed_password = auth.get_password_hash(user_in.password)
+        
+    if user_in.role is not None:
+        user.role = user_in.role
+        
+    if user_in.program_id is not None:
+        user.program_id = user_in.program_id
+    elif user_in.role == models.UserRole.admin:
+        # Admins don't need a program
+        user.program_id = None
+        
+    if user_in.is_active is not None:
+        user.is_active = user_in.is_active
+
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
 
 @router.delete("/users/{user_id}", status_code=204)
 async def delete_user(

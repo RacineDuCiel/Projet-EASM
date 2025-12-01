@@ -24,9 +24,9 @@ export default function LoginPage() {
         try {
             await login({ username, password });
             navigate('/');
-        } catch (err) {
+        } catch (err: any) {
             console.error('Login error:', err);
-            setError('Invalid username or password');
+            setError(err.response?.data?.detail || 'Invalid username or password');
         } finally {
             setIsLoading(false);
         }

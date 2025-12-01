@@ -12,6 +12,13 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
 
+class UserUpdate(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    role: Optional[UserRole] = None
+    program_id: Optional[UUID] = None
+    is_active: Optional[bool] = None
+
 from src.schemas.program import Program
 
 class User(UserBase):

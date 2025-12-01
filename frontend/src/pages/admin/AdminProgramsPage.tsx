@@ -13,7 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/components/ui/use-toast";
-import { Plus, Trash2, Globe, Server, Network, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Globe, Server, Network, Loader2, AlertCircle, Pencil } from 'lucide-react';
+import { EditProgramDialog } from '@/components/admin/EditProgramDialog';
 
 // --- Schemas ---
 const programSchema = z.object({
@@ -82,7 +83,7 @@ function CreateProgramForm() {
     );
 }
 
-function ProgramCard({ program }: { program: Program }) {
+function ProgramCard({ program, onEdit }: { program: Program, onEdit: (program: Program) => void }) {
     const queryClient = useQueryClient();
     const { toast } = useToast();
 
@@ -136,7 +137,12 @@ function ProgramCard({ program }: { program: Program }) {
         <Card>
             <CardHeader className="flex flex-row items-center justify-between">
                 <div>
-                    <CardTitle>{program.name}</CardTitle>
+                    <CardTitle className="flex items-center gap-2">
+                        {program.name}
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onEdit(program)}>
+                            <Pencil className="h-3 w-3" />
+                        </Button>
+                    </CardTitle>
                     <CardDescription>Created on {new Date(program.created_at).toLocaleDateString()}</CardDescription>
                 </div>
                 <AlertDialog>
@@ -259,6 +265,7 @@ export default function AdminProgramsPage() {
         queryKey: ['programs'],
         queryFn: programsService.getAll,
     });
+    const [editingProgram, setEditingProgram] = useState<Program | null>(null);
 
     if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
     if (error) return (
@@ -281,7 +288,7 @@ export default function AdminProgramsPage() {
 
             <div className="grid gap-6">
                 {programs?.map((program) => (
-                    <ProgramCard key={program.id} program={program} />
+                    <ProgramCard key={program.id} program={program} onEdit={setEditingProgram} />
                 ))}
                 {programs?.length === 0 && (
                     <div className="text-center p-12 border-2 border-dashed rounded-lg text-muted-foreground">
@@ -289,6 +296,12 @@ export default function AdminProgramsPage() {
                     </div>
                 )}
             </div>
+
+            <EditProgramDialog
+                program={editingProgram}
+                open={!!editingProgram}
+                onOpenChange={(open) => !open && setEditingProgram(null)}
+            />
         </div>
     );
 }

@@ -42,7 +42,24 @@ async def read_program(program_id: UUID, db: AsyncSession = Depends(database.get
     db_program = await crud.get_program(db, program_id=program_id)
     if db_program is None:
         raise HTTPException(status_code=404, detail="Program not found")
+    if db_program is None:
+        raise HTTPException(status_code=404, detail="Program not found")
     return db_program
+
+@router.put("/{program_id}", response_model=schemas.Program)
+async def update_program(
+    program_id: UUID, 
+    program_in: schemas.ProgramUpdate, 
+    db: AsyncSession = Depends(database.get_db),
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    program = await crud.update_program(db, program_id, program_in)
+    if not program:
+        raise HTTPException(status_code=404, detail="Program not found")
+    return program
 
 @router.post("/{program_id}/scopes/", response_model=schemas.Scope)
 async def create_scope_for_program(
