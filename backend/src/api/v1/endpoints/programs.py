@@ -22,8 +22,20 @@ async def create_program(program: schemas.ProgramCreate, db: AsyncSession = Depe
     return await crud.create_program(db=db, program=program)
 
 @router.get("/", response_model=List[schemas.Program])
-async def read_programs(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(database.get_db)):
-    return await crud.get_programs(db, skip=skip, limit=limit)
+async def read_programs(
+    skip: int = 0, 
+    limit: int = 100, 
+    db: AsyncSession = Depends(database.get_db),
+    current_user: schemas.User = Depends(auth.get_current_user)
+):
+    if current_user.role == "admin":
+        return await crud.get_programs(db, skip=skip, limit=limit)
+    else:
+        # Regular users can only see their assigned program
+        if not current_user.program_id:
+            return []
+        program = await crud.get_program(db, program_id=current_user.program_id)
+        return [program] if program else []
 
 @router.get("/{program_id}", response_model=schemas.Program)
 async def read_program(program_id: UUID, db: AsyncSession = Depends(database.get_db)):
