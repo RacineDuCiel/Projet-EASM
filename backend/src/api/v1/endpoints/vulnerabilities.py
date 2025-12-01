@@ -1,6 +1,6 @@
 from typing import Any, List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from src import crud, models, schemas
 from src.api.v1.endpoints import auth
@@ -24,8 +24,13 @@ async def read_vulnerabilities(
     Retrieve vulnerabilities.
     """
     program_id = None
-    if current_user.role != "admin":
-        program_id = current_user.program_id
+    if current_user.role == models.UserRole.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admins cannot access vulnerabilities. This is an operational task for users."
+        )
+    
+    program_id = current_user.program_id
         
     vulnerabilities = await crud.vulnerability.get_multi(
         db,
@@ -53,14 +58,19 @@ async def read_vulnerability(
         raise HTTPException(status_code=404, detail="Vulnerability not found")
         
     # Check permissions
-    if current_user.role != "admin":
-        # Ensure vulnerability belongs to user's program
-        # This is a bit complex as we need to join tables. 
-        # For now, relying on the fact that if they found the ID, they probably have access, 
-        # but strictly we should check.
-        # A better way is to fetch with joins or check the scope->program relation.
-        # Given the complexity, we'll assume for MVP that ID knowledge implies access or we can fetch the asset->scope->program.
-        pass
+    if current_user.role == models.UserRole.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admins cannot access vulnerabilities."
+        )
+        
+    # Ensure vulnerability belongs to user's program
+    # This is a bit complex as we need to join tables. 
+    # For now, relying on the fact that if they found the ID, they probably have access, 
+    # but strictly we should check.
+    # A better way is to fetch with joins or check the scope->program relation.
+    # Given the complexity, we'll assume for MVP that ID knowledge implies access or we can fetch the asset->scope->program.
+    pass
         
     return vulnerability
 
@@ -79,8 +89,13 @@ async def update_vulnerability(
         raise HTTPException(status_code=404, detail="Vulnerability not found")
         
     # Check permissions
-    if current_user.role != "admin":
-        # TODO: Strict permission check
+    if current_user.role == models.UserRole.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admins cannot update vulnerabilities."
+        )
+        
+    # TODO: Strict permission check
         pass
         
     vulnerability = await crud.vulnerability.update(db, db_obj=vulnerability, obj_in=vuln_in)

@@ -41,10 +41,6 @@ export default function Layout() {
                                 <Activity className="h-4 w-4" />
                                 Scans
                             </Link>
-                            <Link to="/vulnerabilities" className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-accent hover:text-accent-foreground transition-colors">
-                                <ShieldAlert className="h-4 w-4" />
-                                Vulnerabilities
-                            </Link>
                             <Link to="/settings" className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground rounded-md transition-colors">
                                 <Settings className="h-4 w-4" />
                                 Settings

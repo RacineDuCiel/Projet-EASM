@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { useAuthStore } from '@/stores/auth-store';
 import type { Scan, Program } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ import { format } from 'date-fns';
 
 export default function ScansPage() {
     const queryClient = useQueryClient();
+    const { user } = useAuthStore();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [selectedScope, setSelectedScope] = useState('');
     const [selectedType, setSelectedType] = useState('passive');
@@ -80,58 +82,61 @@ export default function ScansPage() {
                         Manage and monitor security scans.
                     </p>
                 </div>
-                <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                    <DialogTrigger asChild>
-                        <Button>
-                            <Play className="mr-2 h-4 w-4" />
-                            Launch Scan
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Launch New Scan</DialogTitle>
-                            <DialogDescription>
-                                Select a target scope and scan type to start immediately.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="grid gap-4 py-4">
-                            <div className="grid gap-2">
-                                <Label>Target Scope</Label>
-                                <Select value={selectedScope} onValueChange={setSelectedScope}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select a scope..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {allScopes.map(scope => (
-                                            <SelectItem key={scope.id} value={scope.id}>
-                                                {scope.value} ({scope.scope_type})
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="grid gap-2">
-                                <Label>Scan Type</Label>
-                                <Select value={selectedType} onValueChange={setSelectedType}>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="passive">Passive Discovery</SelectItem>
-                                        <SelectItem value="full">Full Scan</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-                            <Button onClick={handleCreateScan} disabled={createScanMutation.isPending || !selectedScope}>
-                                {createScanMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Launch
+
+                {user?.role !== 'admin' && (
+                    <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                        <DialogTrigger asChild>
+                            <Button>
+                                <Play className="mr-2 h-4 w-4" />
+                                Launch Scan
                             </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Launch New Scan</DialogTitle>
+                                <DialogDescription>
+                                    Select a target scope and scan type to start immediately.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                                <div className="grid gap-2">
+                                    <Label>Target Scope</Label>
+                                    <Select value={selectedScope} onValueChange={setSelectedScope}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select a scope..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {allScopes.map(scope => (
+                                                <SelectItem key={scope.id} value={scope.id}>
+                                                    {scope.value} ({scope.scope_type})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label>Scan Type</Label>
+                                    <Select value={selectedType} onValueChange={setSelectedType}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="passive">Passive Discovery</SelectItem>
+                                            <SelectItem value="full">Full Scan</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                                <Button onClick={handleCreateScan} disabled={createScanMutation.isPending || !selectedScope}>
+                                    {createScanMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Launch
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                )}
             </div>
 
             <Card>
@@ -191,6 +196,6 @@ export default function ScansPage() {
                     )}
                 </CardContent>
             </Card>
-        </div>
+        </div >
     );
 }

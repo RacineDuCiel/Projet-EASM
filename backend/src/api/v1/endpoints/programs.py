@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from uuid import UUID
 from src import crud, schemas
+from src.api.v1.endpoints import auth
 from src.db import session as database
 
 router = APIRouter(
@@ -28,9 +29,29 @@ async def read_program(program_id: UUID, db: AsyncSession = Depends(database.get
 
 @router.post("/{program_id}/scopes/", response_model=schemas.Scope)
 async def create_scope_for_program(
-    program_id: UUID, scope: schemas.ScopeCreate, db: AsyncSession = Depends(database.get_db)
+    program_id: UUID, 
+    scope: schemas.ScopeCreate, 
+    db: AsyncSession = Depends(database.get_db),
+    current_user: schemas.User = Depends(auth.get_current_user)
 ):
-    return await crud.create_scope(db=db, scope=scope, program_id=program_id)
+    # Check if program exists
+    program = await crud.get_program(db, program_id)
+    if not program:
+        raise HTTPException(status_code=404, detail="Program not found")
+        
+    # Check permissions (optional, but good practice)
+    # if current_user.role != UserRole.admin and current_user.program_id != program_id:
+    #     raise HTTPException(status_code=403, detail="Not authorized to add scope to this program")
+
+    try:
+        return await crud.create_scope(db=db, scope=scope, program_id=program_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        # Log the error
+        print(f"Error creating scope: {e}")
+        # Expose error for debugging (remove in production)
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 @router.get("/{program_id}/scopes/", response_model=List[schemas.Scope])
 async def read_scopes(program_id: UUID, db: AsyncSession = Depends(database.get_db)):

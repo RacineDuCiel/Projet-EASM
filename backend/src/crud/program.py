@@ -24,7 +24,12 @@ async def get_program(db: AsyncSession, program_id: UUID):
     return result.scalar_one_or_none()
 
 async def create_scope(db: AsyncSession, scope: schemas.ScopeCreate, program_id: UUID):
-    db_scope = models.Scope(**scope.model_dump(), program_id=program_id)
+    # Explicitly construct Scope to ensure correct types (especially Enum)
+    db_scope = models.Scope(
+        program_id=program_id,
+        scope_type=scope.scope_type,
+        value=scope.value
+    )
     db.add(db_scope)
     await db.commit()
     await db.refresh(db_scope)

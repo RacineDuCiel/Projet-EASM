@@ -27,6 +27,14 @@ async def get_settings(
     current_user: User = Depends(auth.get_current_user)
 ):
     if not current_user.program_id:
+        if current_user.role == "admin":
+            # Return empty/default for admin without program
+            # Or raise 404 but handled gracefully?
+            # Better to return 404 and let frontend handle it, 
+            # BUT the user complained about the error.
+            # Let's return a dummy program or handle it.
+            # Actually, let's just raise 404 but with a clear detail.
+            raise HTTPException(status_code=404, detail="Admin not associated with a program")
         raise HTTPException(status_code=404, detail="User not associated with a program")
     
     program = await crud.get_program(db, current_user.program_id)

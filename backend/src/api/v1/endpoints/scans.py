@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from uuid import UUID
@@ -21,13 +21,23 @@ limiter = Limiter(key_func=get_remote_address)
 # Services
 asset_service = AssetService()
 
+from src.api.v1.endpoints import auth
+from src.models import User, UserRole
+
 @router.post("/", response_model=schemas.Scan)
 @limiter.limit("10/minute")
 async def create_scan(
     request: Request,
     scan: schemas.ScanCreate,
-    db: AsyncSession = Depends(database.get_db)
+    db: AsyncSession = Depends(database.get_db),
+    current_user: User = Depends(auth.get_current_user)
 ):
+    if current_user.role == UserRole.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admins cannot launch scans. This is an operational task for users."
+        )
+
     db_scan = await ScanService.create_scan(db, scan)
     if not db_scan:
         raise HTTPException(status_code=404, detail="Scope not found")

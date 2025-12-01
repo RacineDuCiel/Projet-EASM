@@ -47,6 +47,30 @@ app.add_middleware(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Fix CORS for RateLimitExceeded
+from starlette.middleware.cors import CORSMiddleware as StarletteCORSMiddleware
+from fastapi.responses import JSONResponse
+
+async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    response = _rate_limit_exceeded_handler(request, exc)
+    # Add CORS headers manually since exception handlers might bypass middleware in some cases
+    # or if the middleware stack is not fully traversed for exceptions raised early.
+    # However, usually middleware handles it. 
+    # But for safety, we can ensure headers are present.
+    # Actually, a better way is to ensure CORSMiddleware is the first one.
+    # It is already added.
+    # But slowapi handler returns a plain Response/JSONResponse.
+    # Let's explicitly add headers.
+    origin = request.headers.get("origin")
+    if origin in origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
+app.add_exception_handler(RateLimitExceeded, custom_rate_limit_handler)
+
 # Include Routers
 app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
 app.include_router(programs.router, prefix="/api/v1", tags=["Programs"])

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Bell, Save, Loader2, Send, CalendarClock } from 'lucide-react';
+import { Bell, Save, Loader2, Send, CalendarClock, Settings } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
 export default function SettingsPage() {
@@ -17,12 +17,13 @@ export default function SettingsPage() {
     const [scanFrequency, setScanFrequency] = useState<string>('never');
 
     // Fetch Settings (Program)
-    const { data: program, isLoading } = useQuery({
+    const { data: program, isLoading, error } = useQuery({
         queryKey: ['settings'],
         queryFn: async () => {
             const response = await api.get<Program>('/settings/');
             return response.data;
         },
+        retry: false
     });
 
     // Initialize state when data loads
@@ -83,6 +84,34 @@ export default function SettingsPage() {
 
     if (isLoading) {
         return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+    }
+
+    if (error) {
+        return (
+            <div className="space-y-6 animate-in fade-in duration-500">
+                <div>
+                    <h2 className="text-3xl font-bold tracking-tight">Settings</h2>
+                    <p className="text-muted-foreground">
+                        Manage your program configuration.
+                    </p>
+                </div>
+                <Card>
+                    <CardContent className="flex flex-col items-center justify-center p-12 space-y-4">
+                        <div className="p-4 rounded-full bg-muted">
+                            <Settings className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                        <div className="text-center space-y-2">
+                            <h3 className="text-lg font-semibold">Unable to load settings</h3>
+                            <p className="text-muted-foreground max-w-sm">
+                                {(error as any)?.response?.status === 404
+                                    ? "You are not associated with any program. These settings are for program-specific configurations."
+                                    : "An error occurred while loading your settings."}
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        );
     }
 
     return (
