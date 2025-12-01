@@ -78,3 +78,12 @@ export interface Scan {
     started_at: string;
     completed_at?: string;
 }
+
+export interface SystemLog {
+    id: string;
+    level: 'info' | 'warning' | 'error';
+    message: string;
+    source: string;
+    user_id?: string;
+    created_at: string;
+}

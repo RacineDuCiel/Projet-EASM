@@ -4,12 +4,10 @@ from contextlib import asynccontextmanager
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from starlette.middleware.cors import CORSMiddleware as StarletteCORSMiddleware
-from fastapi.responses import JSONResponse
 import logging
 
 from src.db.session import engine, Base, AsyncSessionLocal
-from src.api.v1.endpoints import programs, scans, assets, monitoring, auth, notifications, settings as settings_router, vulnerabilities
+from src.api.v1.endpoints import programs, scans, assets, monitoring, auth, notifications, settings as settings_router, vulnerabilities, logs
 from src.core.config import settings
 from src.core.logging import setup_logging
 
@@ -100,6 +98,7 @@ app.include_router(monitoring.router, prefix="/api/v1", tags=["Monitoring"])
 app.include_router(notifications.router, prefix="/api/v1", tags=["Notifications"])
 app.include_router(settings_router.router, prefix="/api/v1", tags=["Settings"])
 app.include_router(vulnerabilities.router, prefix="/api/v1/vulnerabilities", tags=["Vulnerabilities"])
+app.include_router(logs.router, prefix="/api/v1/logs", tags=["System Logs"])
 
 @app.get("/health")
 def health_check():

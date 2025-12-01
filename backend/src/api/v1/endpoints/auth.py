@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import timedelta
 from src.db import session as database
-from src import models, schemas
+from src import models, schemas, crud
 from src.core import security as auth
 
 router = APIRouter(
@@ -57,6 +57,15 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         data={"sub": user.username, "role": user.role.value, "program_id": str(user.program_id) if user.program_id else None},
         expires_delta=access_token_expires
     )
+    
+    # 4. Log login event
+    await crud.create_system_log(db, schemas.SystemLogCreate(
+        level="info",
+        message=f"User '{user.username}' logged in",
+        source="auth",
+        user_id=user.id
+    ))
+
     return {"access_token": access_token, "token_type": "bearer", "user": user}
 
 @router.post("/users/", response_model=schemas.User)
@@ -76,7 +85,14 @@ async def create_user(user: schemas.UserCreate, db: AsyncSession = Depends(datab
     db.add(db_user)
     await db.commit()
     await db.refresh(db_user)
-    return db_user
+    
+    await crud.create_system_log(db, schemas.SystemLogCreate(
+        level="info",
+        message=f"User '{db_user.username}' created",
+        source="auth",
+        user_id=None # System event or admin?
+    ))
+    
     return db_user
 
 @router.get("/users/", response_model=list[schemas.User])
@@ -96,7 +112,6 @@ async def read_users(
         .offset(skip)
         .limit(limit)
     )
-    return result.scalars().all()
     return result.scalars().all()
 
 @router.delete("/users/{user_id}", status_code=204)

@@ -1,7 +1,20 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, Users, Shield, Database } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/api';
+import type { SystemLog } from '@/types';
+import { formatDistanceToNow } from 'date-fns';
 
 export default function AdminDashboard() {
+    const { data: logs } = useQuery<SystemLog[]>({
+        queryKey: ['system-logs'],
+        queryFn: async () => {
+            const response = await api.get('/logs/?limit=10');
+            return response.data;
+        },
+        refetchInterval: 30000, // Refresh every 30s
+    });
+
     return (
         <div className="space-y-8">
             <div>
@@ -72,18 +85,19 @@ export default function AdminDashboard() {
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-4">
-                            <div className="flex items-center">
-                                <div className="ml-4 space-y-1">
-                                    <p className="text-sm font-medium leading-none">User 'client1' logged in</p>
-                                    <p className="text-sm text-muted-foreground">Just now</p>
+                            {logs?.length === 0 && (
+                                <p className="text-sm text-muted-foreground">No logs available.</p>
+                            )}
+                            {logs?.map((log) => (
+                                <div key={log.id} className="flex items-center">
+                                    <div className="ml-4 space-y-1">
+                                        <p className="text-sm font-medium leading-none">{log.message}</p>
+                                        <p className="text-sm text-muted-foreground">
+                                            {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
+                                        </p>
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="flex items-center">
-                                <div className="ml-4 space-y-1">
-                                    <p className="text-sm font-medium leading-none">Database backup completed</p>
-                                    <p className="text-sm text-muted-foreground">2 hours ago</p>
-                                </div>
-                            </div>
+                            ))}
                         </div>
                     </CardContent>
                 </Card>

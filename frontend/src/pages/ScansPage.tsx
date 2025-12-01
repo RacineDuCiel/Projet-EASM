@@ -221,11 +221,13 @@ export default function ScansPage() {
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex justify-end gap-2">
-                                                <Link to={`/scans/${scan.id}`}>
-                                                    <Button variant="outline" size="sm">
-                                                        View Details
-                                                    </Button>
-                                                </Link>
+                                                {user?.role !== 'admin' && (
+                                                    <Link to={`/scans/${scan.id}`}>
+                                                        <Button variant="outline" size="sm">
+                                                            View Details
+                                                        </Button>
+                                                    </Link>
+                                                )}
                                                 {(scan.status === 'running' || scan.status === 'pending') && user?.role === 'admin' && (
                                                     <Button
                                                         variant="destructive"

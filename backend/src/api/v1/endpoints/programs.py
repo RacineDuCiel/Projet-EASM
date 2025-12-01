@@ -45,7 +45,7 @@ async def create_scope_for_program(
         raise HTTPException(status_code=404, detail="Program not found")
 
     try:
-        logger.info(f"Adding scope {scope.scope} to program {program_id} by user {current_user.id}")
+        logger.info(f"Adding scope {scope.value} ({scope.scope_type}) to program {program_id} by user {current_user.id}")
         return await crud.create_scope(db=db, scope=scope, program_id=program_id)
     except ValueError as e:
         logger.warning(f"Validation error creating scope: {e}")
