@@ -29,3 +29,13 @@ shell-worker: ## Access the worker_discovery container shell
 clean: ## Remove stopped containers and unused images
 	docker-compose down -v --remove-orphans
 	docker system prune -f
+
+setup: ## First time setup: build, start, and migrate
+	docker-compose up -d --build
+	@echo "Waiting for services to be ready..."
+	@sleep 10
+	docker-compose exec backend alembic upgrade head
+	@echo "Setup complete! Project is running."
+
+migrate: ## Run database migrations
+	docker-compose exec backend alembic upgrade head
