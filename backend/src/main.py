@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from contextlib import asynccontextmanager
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -59,18 +60,23 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS Configuration
+# CORS Configuration - MUST be added LAST (executes first)
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
 
+# GZip compression - added BEFORE CORS so CORS runs first
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
+# CORS middleware - added LAST so it runs FIRST and handles all responses including errors
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],  # Allow frontend to read response headers
 )
 
 # Add rate limiting
@@ -92,6 +98,33 @@ async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return response
 
 app.add_exception_handler(RateLimitExceeded, custom_rate_limit_handler)
+
+# Global exception handler to log and add CORS headers on 500 errors
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Catch all unhandled exceptions, log them, and return a JSON response with CORS headers.
+    """
+    import traceback
+    logger = logging.getLogger("src.main")
+    logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc}")
+    logger.error(traceback.format_exc())
+    
+    from fastapi.responses import JSONResponse
+    response = JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"}
+    )
+    
+    # Add CORS headers
+    origin = request.headers.get("origin")
+    if origin in origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+    
+    return response
 
 # Include Routers
 app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])

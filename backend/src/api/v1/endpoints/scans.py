@@ -95,8 +95,6 @@ async def read_scan_events(scan_id: UUID, db: AsyncSession = Depends(database.ge
         raise HTTPException(status_code=404, detail="Scan not found")
     return scan.events
 
-from src.api.v1.endpoints import auth
-from src.models import User
 
 @router.get("/", response_model=List[schemas.Scan])
 async def read_scans(

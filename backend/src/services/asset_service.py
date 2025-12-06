@@ -51,4 +51,7 @@ class AssetService:
         return processed_count, error_count
 
     async def create_asset_simple(self, db: AsyncSession, asset: schemas.AssetCreate, scope_id: UUID):
-        return await crud.create_asset(db, asset, scope_id)
+        # crud.create_asset returns (asset, new_vulns) tuple
+        db_asset, _ = await crud.create_asset(db, asset, scope_id)
+        return db_asset
+

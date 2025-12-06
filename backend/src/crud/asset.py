@@ -1,19 +1,30 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
+from sqlalchemy import and_
 from uuid import UUID
 from datetime import datetime, timezone
+from typing import List, Tuple, Set
 import logging
 from src import models, schemas
 
 logger = logging.getLogger(__name__)
 
-async def create_asset(db: AsyncSession, asset: schemas.AssetCreate, scope_id: UUID):
-    # Check if asset exists
+
+async def create_asset(
+    db: AsyncSession, asset: schemas.AssetCreate, scope_id: UUID
+) -> Tuple[models.Asset, List[models.Vulnerability]]:
+    """
+    Create or update an asset with its services and vulnerabilities.
+    Uses batch operations to avoid N+1 query anti-patterns.
+    
+    Returns:
+        Tuple of (asset, new_vulnerabilities)
+    """
+    # 1. Check if asset exists
     result = await db.execute(
         select(models.Asset)
-        .where(models.Asset.scope_id == scope_id)
-        .where(models.Asset.value == asset.value)
+        .where(and_(models.Asset.scope_id == scope_id, models.Asset.value == asset.value))
     )
     db_asset = result.scalar_one_or_none()
     
@@ -22,52 +33,95 @@ async def create_asset(db: AsyncSession, asset: schemas.AssetCreate, scope_id: U
         db_asset.last_seen = datetime.now(timezone.utc)
         db_asset.is_active = True
     else:
-        # Create new
+        # Create new asset
         asset_data = asset.model_dump(exclude={"services", "vulnerabilities"})
         db_asset = models.Asset(**asset_data, scope_id=scope_id)
         db.add(db_asset)
-        await db.commit()
-        await db.refresh(db_asset)
+        await db.flush()  # Get the ID without committing
     
-    # Handle Services
-    for service in asset.services:
-        result = await db.execute(
-            select(models.Service)
-            .where(models.Service.asset_id == db_asset.id)
-            .where(models.Service.port == service.port)
-            .where(models.Service.protocol == service.protocol)
-        )
-        db_service = result.scalar_one_or_none()
-        if not db_service:
-            db_service = models.Service(**service.model_dump(), asset_id=db_asset.id)
-            db.add(db_service)
+    # 2. Batch process Services (O(1) query instead of O(n))
+    if asset.services:
+        await _batch_create_services(db, db_asset.id, asset.services)
     
-    # Handle Vulnerabilities
+    # 3. Batch process Vulnerabilities (O(1) query instead of O(n))
     new_vulns = []
-    logger.info(f"Attempting to create {len(asset.vulnerabilities)} vulnerabilities for asset {asset.value}")
+    if asset.vulnerabilities:
+        new_vulns = await _batch_create_vulnerabilities(db, db_asset.id, asset.vulnerabilities)
     
-    for vuln in asset.vulnerabilities:
-            result = await db.execute(
-                select(models.Vulnerability)
-                .where(models.Vulnerability.asset_id == db_asset.id)
-                .where(models.Vulnerability.title == vuln.title)
-            )
-            db_vuln = result.scalar_one_or_none()
-            if not db_vuln:
-                vuln_data = vuln.model_dump()
-                db_vuln = models.Vulnerability(**vuln_data, asset_id=db_asset.id)
-                db.add(db_vuln)
-                new_vulns.append(db_vuln)
-                logger.info(f"New vulnerability created: {vuln.title} (Severity: {vuln.severity.value})")
-            else:
-                logger.debug(f"Vulnerability already exists: {vuln.title}")
-
     await db.commit()
     await db.refresh(db_asset)
-    logger.info(f"Asset {db_asset.value}: {len(new_vulns)} new vulnerabilities successfully added to database")
+    
+    if new_vulns:
+        logger.info(f"Asset {db_asset.value}: {len(new_vulns)} new vulnerabilities added")
+    
     return db_asset, new_vulns
 
+
+async def _batch_create_services(
+    db: AsyncSession, asset_id: UUID, services: List[schemas.ServiceCreate]
+) -> None:
+    """
+    Batch create services, skipping duplicates.
+    Uses a single query to fetch existing services.
+    """
+    if not services:
+        return
+    
+    # Fetch all existing services in ONE query
+    result = await db.execute(
+        select(models.Service.port, models.Service.protocol)
+        .where(models.Service.asset_id == asset_id)
+    )
+    existing_set: Set[Tuple[int, str]] = {(row.port, row.protocol) for row in result}
+    
+    # Filter new services
+    new_services = [
+        models.Service(**s.model_dump(), asset_id=asset_id)
+        for s in services
+        if (s.port, s.protocol) not in existing_set
+    ]
+    
+    # Batch add
+    if new_services:
+        db.add_all(new_services)
+        logger.debug(f"Added {len(new_services)} new services for asset {asset_id}")
+
+
+async def _batch_create_vulnerabilities(
+    db: AsyncSession, asset_id: UUID, vulnerabilities: List[schemas.VulnerabilityCreate]
+) -> List[models.Vulnerability]:
+    """
+    Batch create vulnerabilities, skipping duplicates.
+    Uses a single query to fetch existing vulnerability titles.
+    
+    Returns:
+        List of newly created vulnerability objects
+    """
+    if not vulnerabilities:
+        return []
+    
+    # Fetch existing vulnerability titles in ONE query
+    result = await db.execute(
+        select(models.Vulnerability.title)
+        .where(models.Vulnerability.asset_id == asset_id)
+    )
+    existing_titles: Set[str] = {row.title for row in result}
+    
+    # Filter and create new vulnerabilities
+    new_vulns = []
+    for vuln in vulnerabilities:
+        if vuln.title not in existing_titles:
+            existing_titles.add(vuln.title)  # Prevent duplicates within batch
+            db_vuln = models.Vulnerability(**vuln.model_dump(), asset_id=asset_id)
+            db.add(db_vuln)
+            new_vulns.append(db_vuln)
+            logger.info(f"New vulnerability: {vuln.title} (Severity: {vuln.severity.value})")
+    
+    return new_vulns
+
+
 async def get_assets(db: AsyncSession, skip: int = 0, limit: int = 100):
+    """Get all assets with eager-loaded relationships."""
     result = await db.execute(
         select(models.Asset)
         .options(
@@ -79,7 +133,11 @@ async def get_assets(db: AsyncSession, skip: int = 0, limit: int = 100):
     )
     return result.scalars().all()
 
-async def get_assets_by_program(db: AsyncSession, program_id: UUID, skip: int = 0, limit: int = 100):
+
+async def get_assets_by_program(
+    db: AsyncSession, program_id: UUID, skip: int = 0, limit: int = 100
+):
+    """Get assets by program with eager-loaded relationships."""
     result = await db.execute(
         select(models.Asset)
         .join(models.Scope)
@@ -93,7 +151,11 @@ async def get_assets_by_program(db: AsyncSession, program_id: UUID, skip: int = 
     )
     return result.scalars().all()
 
-async def get_assets_by_scope(db: AsyncSession, scope_id: UUID, skip: int = 0, limit: int = 100):
+
+async def get_assets_by_scope(
+    db: AsyncSession, scope_id: UUID, skip: int = 0, limit: int = 100
+):
+    """Get assets by scope with eager-loaded relationships."""
     result = await db.execute(
         select(models.Asset)
         .where(models.Asset.scope_id == scope_id)
@@ -106,7 +168,9 @@ async def get_assets_by_scope(db: AsyncSession, scope_id: UUID, skip: int = 0, l
     )
     return result.scalars().all()
 
+
 async def get_asset(db: AsyncSession, asset_id: UUID):
+    """Get a single asset by ID with eager-loaded relationships."""
     result = await db.execute(
         select(models.Asset)
         .where(models.Asset.id == asset_id)
