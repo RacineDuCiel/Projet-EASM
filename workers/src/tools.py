@@ -98,54 +98,134 @@ def run_nuclei(target: str) -> Generator[Dict[str, Any], None, None]:
     """
     Runs Nuclei to scan for vulnerabilities.
     Yields findings (vulnerabilities) as they are found.
+    
+    Includes a global timeout protection to prevent indefinite blocking.
     """
     if not check_tool("nuclei"):
         logger.error("Nuclei not found in PATH")
         return
 
-    logger.info(f"Running Nuclei on {target}...")
+    # Global timeout for entire Nuclei scan (default: 10 minutes)
+    NUCLEI_TIMEOUT_TOTAL = int(os.getenv("NUCLEI_TIMEOUT_TOTAL", "600"))
+    
+    logger.info(f"Running Nuclei on {target} (max {NUCLEI_TIMEOUT_TOTAL}s)...")
+    
+    rate_limit = os.getenv("NUCLEI_RATE_LIMIT", "150")
+    timeout = os.getenv("NUCLEI_TIMEOUT", "5")
+    retries = os.getenv("NUCLEI_RETRIES", "1")
+    severity = os.getenv("NUCLEI_SEVERITY", "info,low,medium,high,critical")
+    
+    cmd = [
+        "nuclei",
+        "-u", target,
+        "-jsonl",
+        "-silent",
+        "-severity", severity,
+        "-rate-limit", rate_limit,
+        "-timeout", timeout,
+        "-retries", retries
+    ]
+    logger.debug(f"Executing Nuclei command: {' '.join(cmd)}")
+    
+    process = None
     try:
-        rate_limit = os.getenv("NUCLEI_RATE_LIMIT", "150")
-        timeout = os.getenv("NUCLEI_TIMEOUT", "5")
-        retries = os.getenv("NUCLEI_RETRIES", "1")
-        severity = os.getenv("NUCLEI_SEVERITY", "info,low,medium,high,critical")
-        
-        cmd = [
-            "nuclei",
-            "-u", target,
-            "-jsonl",
-            "-silent",
-            "-severity", severity,
-            "-rate-limit", rate_limit,
-            "-timeout", timeout,
-            "-retries", retries
-        ]
-        logger.debug(f"Executing Nuclei command: {' '.join(cmd)}")
-        
         # Use Popen to stream output
-        with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1) as process:
-            if process.stdout:
-                for line in process.stdout:
-                    if not line.strip(): continue
-                    try:
-                        data = json.loads(line)
-                        finding = {
-                            "title": data.get("info", {}).get("name"),
-                            "severity": normalize_severity(data.get("info", {}).get("severity")),
-                            "description": data.get("info", {}).get("description"),
-                            "status": "open"
-                        }
-                        yield finding
-                    except json.JSONDecodeError:
-                        pass
+        process = subprocess.Popen(
+            cmd, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE, 
+            text=True, 
+            bufsize=1
+        )
+        
+        import threading
+        import queue
+        
+        # Queue to collect findings from reader thread
+        findings_queue: queue.Queue = queue.Queue()
+        reader_error: List[Exception] = []
+        
+        def read_output():
+            """Thread function to read Nuclei output."""
+            try:
+                if process.stdout:
+                    for line in process.stdout:
+                        if not line.strip():
+                            continue
+                        try:
+                            data = json.loads(line)
+                            finding = {
+                                "title": data.get("info", {}).get("name"),
+                                "severity": normalize_severity(data.get("info", {}).get("severity")),
+                                "description": data.get("info", {}).get("description"),
+                                "status": "open"
+                            }
+                            findings_queue.put(finding)
+                        except json.JSONDecodeError:
+                            pass
+            except Exception as e:
+                reader_error.append(e)
+            finally:
+                findings_queue.put(None)  # Signal end of output
+        
+        # Start reader thread
+        reader_thread = threading.Thread(target=read_output, daemon=True)
+        reader_thread.start()
+        
+        # Yield findings with timeout protection
+        start_time = __import__('time').time()
+        while True:
+            elapsed = __import__('time').time() - start_time
+            remaining_timeout = max(0.1, NUCLEI_TIMEOUT_TOTAL - elapsed)
             
-            # Check for errors after process finishes
-            stderr = process.stderr.read() if process.stderr else ""
-            if process.returncode != 0 and stderr:
-                logger.error(f"Nuclei process error on {target}: {stderr}")
-
+            if elapsed >= NUCLEI_TIMEOUT_TOTAL:
+                logger.error(f"Nuclei global timeout ({NUCLEI_TIMEOUT_TOTAL}s) reached on {target}")
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                break
+            
+            try:
+                finding = findings_queue.get(timeout=min(1.0, remaining_timeout))
+                if finding is None:  # End signal
+                    break
+                yield finding
+            except queue.Empty:
+                # Check if process is still running
+                if process.poll() is not None:
+                    # Process finished, drain remaining queue
+                    while True:
+                        try:
+                            finding = findings_queue.get_nowait()
+                            if finding is None:
+                                break
+                            yield finding
+                        except queue.Empty:
+                            break
+                    break
+        
+        # Wait for reader thread to complete
+        reader_thread.join(timeout=5)
+        
+        # Check for errors
+        if reader_error:
+            logger.error(f"Nuclei reader error on {target}: {reader_error[0]}")
+        
+        stderr = process.stderr.read() if process.stderr else ""
+        if process.returncode and process.returncode != 0 and stderr:
+            logger.error(f"Nuclei process error on {target}: {stderr}")
+            
     except Exception as e:
         logger.error(f"Nuclei failed on {target}: {e}")
+    finally:
+        if process and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
 
 def normalize_severity(severity: str) -> str:
     """Normalizes Nuclei severity to match backend Enum."""

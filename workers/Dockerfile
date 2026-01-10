@@ -1,15 +1,16 @@
-FROM python:3.10-slim
+# =============================================================================
+# Stage 1: Tool Installer - Download and prepare external tools
+# =============================================================================
+FROM python:3.10-slim AS tools-installer
 
-# Install system dependencies
-# libpcap-dev is required for Naabu
-RUN apt-get update && apt-get install -y \
-    curl \
+# Install download tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     unzip \
-    libpcap-dev \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ProjectDiscovery Tools (Binaries)
+# Download ProjectDiscovery Tools (Binaries)
 # Using pre-compiled binaries is faster and more reliable than compiling from source.
 
 # Subfinder
@@ -36,14 +37,55 @@ RUN wget -q https://github.com/projectdiscovery/nuclei/releases/download/v3.2.9/
 # Update Nuclei Templates
 RUN nuclei -update-templates
 
+# =============================================================================
+# Stage 2: Python Builder - Install Python dependencies
+# =============================================================================
+FROM python:3.10-slim AS python-builder
+
 WORKDIR /app
 
-# Copy and install Python dependencies
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# =============================================================================
+# Stage 3: Runtime - Minimal production image
+# =============================================================================
+FROM python:3.10-slim AS runtime
+
+# Install only runtime dependencies (minimal footprint)
+# libpcap0.8 is required for Naabu network scanning
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpcap0.8 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy tools from builder
+COPY --from=tools-installer /usr/local/bin/subfinder /usr/local/bin/
+COPY --from=tools-installer /usr/local/bin/naabu /usr/local/bin/
+COPY --from=tools-installer /usr/local/bin/nuclei /usr/local/bin/
+
+# Copy nuclei templates
+COPY --from=tools-installer /root/nuclei-templates /root/nuclei-templates
+
+# Copy virtual environment from python builder
+COPY --from=python-builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /app
 
 # Copy application code
 COPY . .
+
+# Set Python environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 # TODO: Security hardening for production
 # The non-root setup with capabilities causes issues in WSL2/Docker Desktop
@@ -56,5 +98,9 @@ COPY . .
 # USER easm-worker
 #
 # TEMPORARY: Running as root for dev/testing in WSL2/Docker Desktop environment
+
+# Health check for worker process
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD celery -A src.celery_app inspect ping -d celery@$HOSTNAME || exit 1
 
 CMD ["celery", "-A", "src.tasks", "worker", "--loglevel=info"]

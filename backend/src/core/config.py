@@ -1,6 +1,6 @@
 from typing import Optional, List
 from pydantic_settings import BaseSettings
-from pydantic import validator
+from pydantic import field_validator
 
 class Settings(BaseSettings):
     # Environment
@@ -30,8 +30,10 @@ class Settings(BaseSettings):
     SCAN_PORTS: str = "80,443,3000-3010,4200,5000-5010,8000-8010,8080-8090"
     HTTP_TIMEOUT: int = 30
     
-    @validator("SECRET_KEY")
-    def validate_secret_key(cls, v, values):
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def validate_secret_key(cls, v, info):
+        values = info.data
         if values.get("ENVIRONMENT") == "production":
             if len(v) < 32:
                 raise ValueError("SECRET_KEY must be at least 32 characters in production.")

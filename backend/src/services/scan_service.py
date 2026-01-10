@@ -1,7 +1,24 @@
+"""
+Service layer for scan operations.
+
+Handles scan lifecycle management, Celery task orchestration, and scheduled scan triggering.
+"""
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional
 from uuid import UUID
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src import crud, schemas, models
 from src.core.celery_utils import celery_app
+from src.models import Scan, ScanEvent
+from src.models.enums import ScanStatus, ScanFrequency
+
+
+logger = logging.getLogger(__name__)
+
 
 class ScanService:
     @staticmethod
@@ -41,12 +58,10 @@ class ScanService:
         return await crud.update_scan_status(db, scan_id, status)
 
     @staticmethod
-    async def check_scheduled_scans(db: AsyncSession):
-        from datetime import datetime, timedelta, timezone
-        from src.models.enums import ScanFrequency
-        
+    async def check_scheduled_scans(db: AsyncSession) -> List[UUID]:
+        """Check and trigger scheduled scans based on program frequency settings."""
         programs = await crud.get_scheduled_programs(db)
-        triggered_scans = []
+        triggered_scans: List[UUID] = []
         
         for program in programs:
             frequency = program.scan_frequency
@@ -89,18 +104,11 @@ class ScanService:
         return triggered_scans
 
     @staticmethod
-    async def resume_interrupted_scans(db: AsyncSession):
+    async def resume_interrupted_scans(db: AsyncSession) -> int:
         """
         Finds all scans with status 'running' and restarts them.
         This is intended to be run on application startup to handle crashes/restarts.
         """
-        from sqlalchemy import select
-        from src.models import Scan, ScanEvent
-        from src.models.enums import ScanStatus
-        import logging
-        
-        logger = logging.getLogger(__name__)
-        
         # Find all running scans
         result = await db.execute(
             select(Scan).where(Scan.status == ScanStatus.running)

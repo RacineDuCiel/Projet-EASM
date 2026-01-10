@@ -29,15 +29,40 @@ async def get_scan(db: AsyncSession, scan_id: UUID):
     result = await db.execute(select(models.Scan).where(models.Scan.id == scan_id))
     return result.scalar_one_or_none()
 
-async def update_scan_status(db: AsyncSession, scan_id: UUID, status: models.ScanStatus):
-    scan = await get_scan(db, scan_id)
-    if scan:
-        scan.status = status
-        if status in [models.ScanStatus.completed, models.ScanStatus.failed]:
-            scan.completed_at = datetime.now(timezone.utc)
-        await db.commit()
-        await db.refresh(scan)
-    return scan
+async def update_scan_status(
+    db: AsyncSession, 
+    scan_id: UUID, 
+    status: models.ScanStatus
+) -> models.Scan | None:
+    """
+    Update scan status using a single UPDATE query.
+    
+    Optimized to avoid the SELECT + UPDATE anti-pattern.
+    Sets completed_at timestamp for terminal states.
+    """
+    from sqlalchemy import update
+    
+    values: dict = {"status": status}
+    
+    # Set completed_at for terminal states
+    terminal_states = [
+        models.ScanStatus.completed, 
+        models.ScanStatus.failed,
+        models.ScanStatus.stopped
+    ]
+    if status in terminal_states:
+        values["completed_at"] = datetime.now(timezone.utc)
+    
+    # Execute single UPDATE query
+    await db.execute(
+        update(models.Scan)
+        .where(models.Scan.id == scan_id)
+        .values(**values)
+    )
+    await db.commit()
+    
+    # Fetch and return updated scan
+    return await get_scan(db, scan_id)
 
 async def create_scan_event(db: AsyncSession, event: schemas.ScanEventCreate, scan_id: UUID):
     db_event = models.ScanEvent(**event.model_dump(), scan_id=scan_id)

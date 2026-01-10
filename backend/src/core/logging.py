@@ -1,28 +1,11 @@
+"""
+Logging configuration for the EASM Platform backend.
+"""
 import logging
 import sys
-from typing import Any
+
 from src.core.config import settings
 
-class InterceptHandler(logging.Handler):
-    """
-    Intercept standard logging messages and route them to the configured handler.
-    Useful if we were using loguru, but here we stick to standard logging 
-    with a custom formatter for consistency.
-    """
-    def emit(self, record: logging.LogRecord) -> None:
-        # Get corresponding Loguru level if it exists
-        try:
-            level = logger.level(record.levelname).name
-        except ValueError:
-            level = record.levelno
-
-        # Find caller from where originated the logged message
-        frame, depth = logging.currentframe(), 2
-        while frame.f_code.co_filename == logging.__file__:
-            frame = frame.f_back
-            depth += 1
-
-        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
 def setup_logging() -> None:
     """

@@ -103,7 +103,7 @@ async def read_scans(
     db: AsyncSession = Depends(database.get_db),
     current_user: User = Depends(auth.get_current_user)
 ):
-    if current_user.role == "admin":
+    if current_user.role == UserRole.admin:
         return await ScanService.get_scans(db, skip=skip, limit=limit)
     else:
         return await ScanService.get_scans_by_program(db, program_id=current_user.program_id, skip=skip, limit=limit)
