@@ -20,22 +20,24 @@ export default function AdminUsersPage() {
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [showCreateAdmin, setShowCreateAdmin] = useState(false);
 
-    // Fetch Users
+    // Fetch Users with auto-refresh
     const { data: users, isLoading: isLoadingUsers, error: usersError } = useQuery({
         queryKey: ['users'],
         queryFn: async () => {
             const response = await api.get<User[]>('/auth/users/');
             return response.data;
         },
+        refetchInterval: 10000, // Auto-refresh every 10s
     });
 
-    // Fetch Programs for selection
+    // Fetch Programs for selection with auto-refresh
     const { data: programs } = useQuery({
         queryKey: ['programs'],
         queryFn: async () => {
             const response = await api.get<Program[]>('/programs/');
             return response.data;
         },
+        refetchInterval: 10000, // Auto-refresh every 10s
     });
 
     // Create User Mutation (For Standard Users)
@@ -114,7 +116,7 @@ export default function AdminUsersPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Create Standard User</CardTitle>
-                            <CardDescription>Add a new client user and assign them to a program.</CardDescription>
+                            <CardDescription>Add a new client user. Program assignment is optional.</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <form onSubmit={handleCreateUser} className="grid gap-4 md:grid-cols-4 items-end">
@@ -138,15 +140,14 @@ export default function AdminUsersPage() {
                                     />
                                 </div>
                                 <div className="grid w-full items-center gap-1.5">
-                                    <Label htmlFor="program">Program</Label>
+                                    <Label htmlFor="program">Program (Optional)</Label>
                                     <select
                                         id="program"
                                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         value={newUser.program_id}
                                         onChange={(e) => setNewUser({ ...newUser, program_id: e.target.value })}
-                                        required
                                     >
-                                        <option value="">Select Program...</option>
+                                        <option value="">No Program (assign later)</option>
                                         {programs?.map(p => (
                                             <option key={p.id} value={p.id}>{p.name}</option>
                                         ))}

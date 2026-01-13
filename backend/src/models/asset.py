@@ -19,8 +19,8 @@ class Asset(Base):
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    scope_id = Column(UUID(as_uuid=True), ForeignKey("scopes.id"), nullable=False, index=True)
-    value = Column(String, nullable=False, index=True)
+    scope_id = Column(UUID(as_uuid=True), ForeignKey("scopes.id"), nullable=False)
+    value = Column(String, nullable=False)
     asset_type = Column(SqlEnum(AssetType), nullable=False)
     is_active = Column(Boolean, default=True)
     first_seen = Column(DateTime(timezone=True), server_default=func.now())
@@ -43,7 +43,7 @@ class Service(Base):
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id"), nullable=False, index=True)
+    asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id"), nullable=False)
     port = Column(Integer, nullable=False)
     protocol = Column(String, default="tcp")
     service_name = Column(String, nullable=True)
@@ -66,9 +66,9 @@ class Vulnerability(Base):
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id"), nullable=False, index=True)
+    asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id"), nullable=False)
     service_id = Column(UUID(as_uuid=True), ForeignKey("services.id"), nullable=True)
-    title = Column(String, nullable=False, index=True)
+    title = Column(String, nullable=False)
     severity = Column(SqlEnum(Severity), nullable=False)
     description = Column(Text, nullable=True)
     status = Column(SqlEnum(VulnStatus), default=VulnStatus.open)

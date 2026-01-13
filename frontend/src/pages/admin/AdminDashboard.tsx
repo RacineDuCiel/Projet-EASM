@@ -1,8 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Activity, Users, Shield, Database } from 'lucide-react';
+import { Activity, Users, Shield, Database, Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import type { SystemLog } from '@/types';
+import type { SystemLog, User, Program } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function AdminDashboard() {
@@ -14,6 +14,36 @@ export default function AdminDashboard() {
         },
         refetchInterval: 30000, // Refresh every 30s
     });
+
+    // Fetch real users data
+    const { data: users, isLoading: usersLoading } = useQuery<User[]>({
+        queryKey: ['admin-users'],
+        queryFn: async () => {
+            const response = await api.get('/auth/users/');
+            return response.data;
+        },
+        refetchInterval: 30000,
+    });
+
+    // Fetch real programs data
+    const { data: programs, isLoading: programsLoading } = useQuery<Program[]>({
+        queryKey: ['admin-programs'],
+        queryFn: async () => {
+            const response = await api.get('/programs/');
+            return response.data;
+        },
+        refetchInterval: 30000,
+    });
+
+    // Calculate user stats
+    const totalUsers = users?.length ?? 0;
+    const adminCount = users?.filter(u => u.role === 'admin').length ?? 0;
+    const clientCount = users?.filter(u => u.role === 'user').length ?? 0;
+    const activeUsers = users?.filter(u => u.is_active).length ?? 0;
+
+    // Calculate program stats
+    const totalPrograms = programs?.length ?? 0;
+    const programNames = programs?.slice(0, 3).map(p => p.name).join(', ') || 'No programs';
 
     return (
         <div className="space-y-8">
@@ -44,10 +74,16 @@ export default function AdminDashboard() {
                         <Users className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">2</div>
-                        <p className="text-xs text-muted-foreground">
-                            1 Admin, 1 Client
-                        </p>
+                        {usersLoading ? (
+                            <Loader2 className="h-6 w-6 animate-spin" />
+                        ) : (
+                            <>
+                                <div className="text-2xl font-bold">{totalUsers}</div>
+                                <p className="text-xs text-muted-foreground">
+                                    {adminCount} Admin{adminCount !== 1 ? 's' : ''}, {clientCount} Client{clientCount !== 1 ? 's' : ''} ({activeUsers} active)
+                                </p>
+                            </>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -57,10 +93,16 @@ export default function AdminDashboard() {
                         <Shield className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">1</div>
-                        <p className="text-xs text-muted-foreground">
-                            Client A
-                        </p>
+                        {programsLoading ? (
+                            <Loader2 className="h-6 w-6 animate-spin" />
+                        ) : (
+                            <>
+                                <div className="text-2xl font-bold">{totalPrograms}</div>
+                                <p className="text-xs text-muted-foreground truncate" title={programNames}>
+                                    {programNames}
+                                </p>
+                            </>
+                        )}
                     </CardContent>
                 </Card>
 

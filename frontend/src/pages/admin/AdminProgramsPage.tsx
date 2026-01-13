@@ -264,6 +264,7 @@ export default function AdminProgramsPage() {
     const { data: programs, isLoading, error } = useQuery({
         queryKey: ['programs'],
         queryFn: programsService.getAll,
+        refetchInterval: 10000, // Auto-refresh every 10s
     });
     const [editingProgram, setEditingProgram] = useState<Program | null>(null);
 

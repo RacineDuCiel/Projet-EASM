@@ -4,16 +4,13 @@ services:
   # ----------------------------------------
   db:
     image: postgres:15-alpine
+    env_file: .env
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:-easm_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-easm_password}
-      - POSTGRES_DB=${POSTGRES_DB:-easm_db}
     ports:
       - "5432:5432" # Accessible depuis l'hôte pour outils SQL
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U easm_user -d easm_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-easm_user} -d ${POSTGRES_DB:-easm_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,6 +38,7 @@ services:
   # ----------------------------------------
   backend:
     build: ./backend
+    env_file: .env
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend/src:/app/src # Hot-reload: modifiez le code, ça se met à jour
@@ -53,13 +51,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://easm_user:easm_password@db:5432/easm_db}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - SECRET_KEY=${SECRET_KEY:-changeme-generate-with-openssl}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      - HTTP_TIMEOUT=${HTTP_TIMEOUT:-30}
-      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -73,6 +64,7 @@ services:
   # ----------------------------------------
   worker_discovery:
     build: ./workers
+    env_file: .env
     # Queue 'discovery' pour les tâches rapides (Subfinder, Orchestration)
     # Concurrency élevée car peu de CPU/RAM par tâche
     command: celery -A src.celery_app worker --loglevel=info -Q discovery --concurrency=10
@@ -83,10 +75,6 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
-    environment:
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - BACKEND_URL=${BACKEND_URL:-http://backend:8000/api/v1}
-      - HTTP_TIMEOUT=${HTTP_TIMEOUT:-30}
     healthcheck:
       test: ["CMD", "celery", "-A", "src.celery_app", "inspect", "ping", "-d", "celery@$$HOSTNAME"]
       interval: 30s
@@ -97,6 +85,7 @@ services:
 
   worker_scan:
     build: ./workers
+    env_file: .env
     # Queue 'scan' pour les tâches lourdes (Naabu, Nuclei)
     # Concurrency faible pour éviter de surcharger le réseau/CPU
     command: celery -A src.celery_app worker --loglevel=info -Q scan --concurrency=2
@@ -107,20 +96,6 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
-    environment:
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - BACKEND_URL=${BACKEND_URL:-http://backend:8000/api/v1}
-      - HTTP_TIMEOUT=${HTTP_TIMEOUT:-30}
-      - SCAN_PORTS=${SCAN_PORTS:-80,443,3000-3010,4200,5000-5010,8000-8010,8080-8090}
-      # Naabu Config
-      - NAABU_PORTS=${NAABU_PORTS:-80,443,3000-3010,4200,5000-5010,8000-8010,8080-8090}
-      - NAABU_RATE_LIMIT=${NAABU_RATE_LIMIT:-1000}
-      # Nuclei Config
-      - NUCLEI_RATE_LIMIT=${NUCLEI_RATE_LIMIT:-150}
-      - NUCLEI_TIMEOUT=${NUCLEI_TIMEOUT:-5}
-      - NUCLEI_RETRIES=${NUCLEI_RETRIES:-1}
-      - NUCLEI_SEVERITY=${NUCLEI_SEVERITY:-info,low,medium,high,critical}
-      - NUCLEI_TIMEOUT_TOTAL=${NUCLEI_TIMEOUT_TOTAL:-600}
     healthcheck:
       test: ["CMD", "celery", "-A", "src.celery_app", "inspect", "ping", "-d", "celery@$$HOSTNAME"]
       interval: 30s
@@ -131,6 +106,7 @@ services:
 
   beat:
     build: ./workers
+    env_file: .env
     command: celery -A src.celery_app beat --loglevel=info
     volumes:
       - ./workers/src:/app/src
@@ -139,9 +115,6 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
-    environment:
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - BACKEND_URL=${BACKEND_URL:-http://backend:8000/api/v1}
     restart: unless-stopped
 
   # ----------------------------------------
@@ -172,7 +145,8 @@ services:
   # ----------------------------------------
   flower:
     image: mher/flower
-    command: celery --broker=redis://redis:6379/0 flower --port=5555 --persistent=True --db=/data/flower.db --max_tasks=10000
+    env_file: .env
+    command: celery --broker=${REDIS_URL:-redis://redis:6379/0} flower --port=5555 --persistent=True --db=/data/flower.db --max_tasks=10000
     ports:
       - "5555:5555"
     depends_on:

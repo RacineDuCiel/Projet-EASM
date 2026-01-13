@@ -43,7 +43,7 @@ class Settings(BaseSettings):
         return v
 
     class Config:
-        env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Ignore les variables d'env non définies dans Settings
 
 settings = Settings()
