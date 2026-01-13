@@ -1,6 +1,6 @@
 # Makefile for EASM Project
 
-.PHONY: help build up down logs shell-backend shell-worker clean
+.PHONY: help build up down logs shell-backend shell-worker clean setup migrate prod
 
 help: ## Show this help message
 	@echo "Usage: make [target]"
@@ -39,3 +39,10 @@ setup: ## First time setup: build, start, and migrate
 
 migrate: ## Run database migrations
 	docker-compose exec backend alembic upgrade head
+
+prod: ## Start production environment
+	docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+	@echo "Production environment started!"
+
+prod-down: ## Stop production environment
+	docker-compose -f docker-compose.yml -f docker-compose.prod.yml down

@@ -133,11 +133,11 @@ def validate_hostname(hostname: str) -> str:
     Plus permissif que validate_domain car ne requiert pas de TLD.
     
     Args:
-        hostname: Le hostname à valider (e.g., "juice-shop", "mysql-server")
-        
+        hostname: Le hostname à valider (e.g., "api-server", "mysql-db")
+    
     Returns:
         Le hostname en minuscules si valide
-        
+    
     Raises:
         ValueError: Si le hostname est invalide
     """

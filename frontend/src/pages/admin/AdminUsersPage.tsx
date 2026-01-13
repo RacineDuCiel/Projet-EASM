@@ -63,11 +63,9 @@ export default function AdminUsersPage() {
     // Delete User Mutation
     const deleteUserMutation = useMutation({
         mutationFn: async (userId: string) => {
-            console.log("Deleting user:", userId);
             await api.delete(`/auth/users/${userId}`);
         },
         onSuccess: () => {
-            console.log("User deleted successfully");
             queryClient.invalidateQueries({ queryKey: ['users'] });
         },
         onError: (err) => {

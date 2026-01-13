@@ -77,7 +77,6 @@ Une fois l'installation terminée (`Setup complete!`), accédez aux différentes
 *   **Application Web (Frontend)** : [http://localhost:5173](http://localhost:5173)
 *   **API Documentation (Swagger)** : [http://localhost:8000/docs](http://localhost:8000/docs)
 *   **Supervision Workers (Flower)** : [http://localhost:5555](http://localhost:5555)
-*   **Administration Docker (Portainer)** : [http://localhost:9000](http://localhost:9000)
 
 ## Commandes Utiles (Makefile)
 
@@ -93,9 +92,23 @@ Le fichier `Makefile` inclut des raccourcis pour la gestion quotidienne :
 | `make clean` | Nettoyage complet (arrête tout et supprime les volumes/images orphelins). |
 | `make shell-backend` | Ouvre un terminal dans le conteneur backend. |
 
+## Déploiement Production
+
+Pour déployer en production :
+
+```bash
+# Copier et configurer les variables d'environnement
+cp .env.example .env
+# Éditer .env avec vos valeurs de production
+
+# Lancer avec la configuration de production
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
 ## Structure du Projet
 
 *   `backend/` : Code source de l'API (FastAPI) et migrations Alembic.
 *   `frontend/` : Code source de l'interface utilisateur (React).
 *   `workers/` : Logique des scanners (Celery tasks).
-*   `docker-compose.yml` : Définition de l'infrastructure.
+*   `docker-compose.yml` : Configuration de développement.
+*   `docker-compose.prod.yml` : Surcharges pour la production.

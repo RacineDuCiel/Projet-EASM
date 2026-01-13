@@ -134,12 +134,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  juice-shop:
-    image: bkimminich/juice-shop
-    ports:
-      - "3000:3000"
-    restart: unless-stopped
-
   # ----------------------------------------
   # Monitoring & Administration
   # ----------------------------------------
@@ -159,21 +153,7 @@ services:
       # - FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH:-admin:admin} # Désactivé temporairement pour debug
     restart: unless-stopped
 
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: portainer
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - portainer_data:/data
-    ports:
-      - "9000:9000"
-
 volumes:
   postgres_data:
   redis_data:
-  portainer_data:
   flower_data:
