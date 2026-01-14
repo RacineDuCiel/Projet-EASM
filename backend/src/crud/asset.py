@@ -235,3 +235,83 @@ async def get_vulnerability_by_title(
         ))
     )
     return result.scalar_one_or_none()
+
+
+async def update_service_technologies(
+    db: AsyncSession,
+    scope_id: UUID,
+    asset_value: str,
+    port: int,
+    technologies: List[str],
+    web_server: str = None,
+    waf_detected: str = None,
+    tls_version: str = None,
+    response_time_ms: int = None
+) -> models.Service:
+    """
+    Update a service with technology detection results.
+    Creates asset and service if they don't exist.
+    """
+    import json
+
+    # 1. Get or create asset
+    result = await db.execute(
+        select(models.Asset)
+        .where(and_(
+            models.Asset.scope_id == scope_id,
+            models.Asset.value == asset_value
+        ))
+    )
+    db_asset = result.scalar_one_or_none()
+
+    if not db_asset:
+        # Create new asset
+        db_asset = models.Asset(
+            scope_id=scope_id,
+            value=asset_value,
+            asset_type=models.AssetType.subdomain,
+            is_active=True
+        )
+        db.add(db_asset)
+        await db.flush()
+        logger.info(f"Created asset {asset_value} for tech detection")
+
+    # 2. Get or create service
+    result = await db.execute(
+        select(models.Service)
+        .where(and_(
+            models.Service.asset_id == db_asset.id,
+            models.Service.port == port,
+            models.Service.protocol == "tcp"
+        ))
+    )
+    db_service = result.scalar_one_or_none()
+
+    if not db_service:
+        db_service = models.Service(
+            asset_id=db_asset.id,
+            port=port,
+            protocol="tcp",
+            service_name="unknown"
+        )
+        db.add(db_service)
+        await db.flush()
+        logger.info(f"Created service on port {port} for asset {asset_value}")
+
+    # 3. Update technology fields
+    if technologies:
+        db_service.technologies = json.dumps(technologies)
+    if web_server:
+        db_service.web_server = web_server
+    if waf_detected:
+        db_service.waf_detected = waf_detected
+    if tls_version:
+        db_service.tls_version = tls_version
+    if response_time_ms:
+        db_service.response_time_ms = response_time_ms
+
+    await db.commit()
+    await db.refresh(db_service)
+
+    logger.info(f"Updated tech detection for {asset_value}:{port} - {len(technologies)} technologies")
+    return db_service

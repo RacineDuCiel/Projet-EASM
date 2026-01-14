@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
-import type { Scan, Program } from '@/types';
+import type { Scan, Program, ScanDepth } from '@/types';
 import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,7 @@ export default function ScansPage() {
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [selectedScope, setSelectedScope] = useState('');
     const [selectedType, setSelectedType] = useState('passive');
+    const [selectedDepth, setSelectedDepth] = useState<ScanDepth>('fast');
     const { toast } = useToast();
 
     // Fetch Scans
@@ -50,16 +51,18 @@ export default function ScansPage() {
         mutationFn: async () => {
             await api.post('/scans/', {
                 scope_id: selectedScope,
-                scan_type: selectedType
+                scan_type: selectedType,
+                scan_depth: selectedDepth
             });
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['scans'] });
             setIsCreateOpen(false);
             setSelectedScope('');
+            setSelectedDepth('fast');
             toast({
                 title: "Scan started",
-                description: "The scan has been successfully launched.",
+                description: `${selectedDepth === 'deep' ? 'Deep' : 'Fast'} scan has been successfully launched.`,
             });
         },
         onError: () => {
@@ -165,6 +168,27 @@ export default function ScansPage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                                <div className="grid gap-2">
+                                    <Label>Scan Depth</Label>
+                                    <Select value={selectedDepth} onValueChange={(v) => setSelectedDepth(v as ScanDepth)}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="fast">
+                                                Fast (Recommended)
+                                            </SelectItem>
+                                            <SelectItem value="deep">
+                                                Deep (Exhaustive)
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        {selectedDepth === 'fast'
+                                            ? 'Targeted scan: detects ~80% of vulnerabilities in ~20% of the time'
+                                            : 'Comprehensive scan: runs all templates, ideal for overnight scans'}
+                                    </p>
+                                </div>
                             </div>
                             <DialogFooter>
                                 <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
@@ -192,6 +216,7 @@ export default function ScansPage() {
                                 <TableRow>
                                     <TableHead>Target</TableHead>
                                     <TableHead>Type</TableHead>
+                                    <TableHead>Depth</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Started At</TableHead>
                                     <TableHead>Duration</TableHead>
@@ -205,6 +230,11 @@ export default function ScansPage() {
                                             {allScopes.find(s => s.id === scan.scope_id)?.value || scan.scope_id}
                                         </TableCell>
                                         <TableCell className="capitalize">{scan.scan_type}</TableCell>
+                                        <TableCell>
+                                            <Badge variant="outline" className={scan.scan_depth === 'deep' ? 'border-purple-500 text-purple-700' : 'border-blue-500 text-blue-700'}>
+                                                {scan.scan_depth === 'deep' ? 'Deep' : 'Fast'}
+                                            </Badge>
+                                        </TableCell>
                                         <TableCell>
                                             <Badge variant="secondary" className={getStatusColor(scan.status)}>
                                                 {scan.status === 'running' && <RefreshCw className="mr-1 h-3 w-3 animate-spin" />}
@@ -244,7 +274,7 @@ export default function ScansPage() {
                                 ))}
                                 {scans?.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-center text-muted-foreground">
+                                        <TableCell colSpan={7} className="text-center text-muted-foreground">
                                             No scans found.
                                         </TableCell>
                                     </TableRow>

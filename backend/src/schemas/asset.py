@@ -9,9 +9,23 @@ class ServiceBase(BaseModel):
     protocol: str
     service_name: Optional[str] = None
     banner: Optional[str] = None
+    # Technology detection fields
+    technologies: Optional[List[str]] = None
+    web_server: Optional[str] = None
+    waf_detected: Optional[str] = None
+    tls_version: Optional[str] = None
+    response_time_ms: Optional[int] = None
 
 class ServiceCreate(ServiceBase):
     pass
+
+class ServiceUpdate(BaseModel):
+    """For updating service with tech detection results."""
+    technologies: Optional[List[str]] = None
+    web_server: Optional[str] = None
+    waf_detected: Optional[str] = None
+    tls_version: Optional[str] = None
+    response_time_ms: Optional[int] = None
 
 class Service(ServiceBase):
     id: UUID
@@ -37,6 +51,17 @@ class VulnerabilityStreamCreate(BaseModel):
     description: Optional[str] = None
     port: Optional[int] = None  # Port associé si applicable
     service_name: Optional[str] = None
+
+
+class TechDetectionResult(BaseModel):
+    """Result from httpx tech detection task."""
+    asset_value: str
+    port: int
+    technologies: List[str] = []
+    web_server: Optional[str] = None
+    waf_detected: Optional[str] = None
+    tls_version: Optional[str] = None
+    response_time_ms: Optional[int] = None
 
 class VulnerabilityUpdate(BaseModel):
     status: Optional[VulnStatus] = None

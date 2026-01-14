@@ -110,6 +110,42 @@ async def add_vulnerability_stream(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to add vulnerability: {str(e)}")
 
+@router.post("/{scan_id}/tech-detect")
+async def update_tech_detection(
+    scan_id: UUID,
+    tech_result: schemas.TechDetectionResult,
+    db: AsyncSession = Depends(database.get_db)
+):
+    """
+    Endpoint for workers to report technology detection results.
+    Updates the Service model with detected technologies.
+    """
+    try:
+        scan = await ScanService.get_scan(db, scan_id)
+        if not scan:
+            raise HTTPException(status_code=404, detail="Scan not found")
+
+        # Update service with tech detection data
+        service = await crud.update_service_technologies(
+            db,
+            scope_id=scan.scope_id,
+            asset_value=tech_result.asset_value,
+            port=tech_result.port,
+            technologies=tech_result.technologies,
+            web_server=tech_result.web_server,
+            waf_detected=tech_result.waf_detected,
+            tls_version=tech_result.tls_version,
+            response_time_ms=tech_result.response_time_ms
+        )
+
+        return {
+            "status": "ok",
+            "service_id": str(service.id) if service else None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update tech detection: {str(e)}")
+
+
 @router.post("/{scan_id}/events", response_model=schemas.ScanEvent)
 async def add_scan_event(scan_id: UUID, event: schemas.ScanEventCreate, db: AsyncSession = Depends(database.get_db)):
     # 1. Get Scan

@@ -14,13 +14,64 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src import crud, schemas, models
 from src.core.celery_utils import celery_app
 from src.models import Scan, ScanEvent
-from src.models.enums import ScanStatus, ScanFrequency
+from src.models.enums import ScanStatus, ScanFrequency, ScanDepth
 
 
 logger = logging.getLogger(__name__)
 
 
 class ScanService:
+    # Scan depth configuration defaults
+    FAST_PORTS = "80,443,8080,8443"
+    FAST_RATE_LIMIT = 300
+    FAST_TIMEOUT = 5
+    FAST_RETRIES = 1
+
+    DEEP_PORTS = "21,22,23,25,53,80,110,111,135,139,143,443,445,993,995,1723,3306,3389,5432,5900,8000-8010,8080-8090,8443,9000-9010"
+    DEEP_RATE_LIMIT = 100
+    DEEP_TIMEOUT = 10
+    DEEP_RETRIES = 3
+
+    @staticmethod
+    def _build_scan_config(scan_depth: ScanDepth, program: models.Program, scan_id: str, target: str, specific_port: int = None) -> dict:
+        """Build scan configuration based on depth and program settings.
+
+        Args:
+            scan_depth: Fast or deep scan mode
+            program: Program with scan configuration
+            scan_id: UUID of the scan
+            target: Target domain/IP
+            specific_port: If provided, scan only this port (skip discovery)
+        """
+        if scan_depth == ScanDepth.fast:
+            ports = program.custom_ports or ScanService.FAST_PORTS
+            rate_limit = program.nuclei_rate_limit or ScanService.FAST_RATE_LIMIT
+            timeout = program.nuclei_timeout or ScanService.FAST_TIMEOUT
+            retries = ScanService.FAST_RETRIES
+            enable_full_vuln_scan = False
+        else:  # deep
+            ports = program.custom_ports or ScanService.DEEP_PORTS
+            rate_limit = program.nuclei_rate_limit or ScanService.DEEP_RATE_LIMIT
+            timeout = program.nuclei_timeout or ScanService.DEEP_TIMEOUT
+            retries = ScanService.DEEP_RETRIES
+            enable_full_vuln_scan = True
+
+        # If a specific port is provided, use it instead of port discovery
+        if specific_port:
+            ports = str(specific_port)
+
+        return {
+            "scan_id": scan_id,
+            "target": target,
+            "scan_depth": scan_depth.value,
+            "ports": ports,
+            "specific_port": specific_port,  # Pass to workers to skip discovery
+            "nuclei_rate_limit": rate_limit,
+            "nuclei_timeout": timeout,
+            "nuclei_retries": retries,
+            "enable_full_vuln_scan": enable_full_vuln_scan
+        }
+
     @staticmethod
     async def create_scan(db: AsyncSession, scan_in: schemas.ScanCreate):
         # 1. Verify Scope exists
@@ -28,17 +79,32 @@ class ScanService:
         if not scope:
             return None
 
-        # 2. Create Scan record in DB
+        # 2. Get Program to access scan configuration
+        program = await crud.get_program(db, scope.program_id)
+        if not program:
+            return None
+
+        # 3. Create Scan record in DB
         db_scan = await crud.create_scan(db=db, scan=scan_in)
-        
-        # 3. Trigger Celery task
-        # We pass the scan_id so the worker can update the status
+
+        # 4. Build scan configuration (pass specific port if defined in scope)
+        scan_config = ScanService._build_scan_config(
+            scan_in.scan_depth,
+            program,
+            str(db_scan.id),
+            scope.value,
+            specific_port=scope.port  # May be None for domains
+        )
+
+        # 5. Trigger Celery task with configuration
         celery_app.send_task(
-            'src.tasks.run_scan', 
-            args=[scope.value, str(db_scan.id)], 
+            'src.tasks.run_scan',
+            args=[scope.value, str(db_scan.id)],
+            kwargs={'scan_config': scan_config},
             queue='discovery'
         )
-        
+
+        logger.info(f"Created scan {db_scan.id} with depth={scan_in.scan_depth.value}")
         return db_scan
 
     @staticmethod
@@ -94,7 +160,8 @@ class ScanService:
                 if should_scan:
                     scan_in = schemas.ScanCreate(
                         scope_id=scope.id,
-                        scan_type="passive"
+                        scan_type="passive",
+                        scan_depth=program.scan_depth  # Use program's configured scan depth
                     )
                     new_scan = await ScanService.create_scan(db, scan_in)
                     if new_scan:
@@ -109,12 +176,16 @@ class ScanService:
         Finds all scans with status 'running' and restarts them.
         This is intended to be run on application startup to handle crashes/restarts.
         """
-        # Find all running scans
+        from sqlalchemy.orm import selectinload
+
+        # Find all running scans with scope and program loaded
         result = await db.execute(
-            select(Scan).where(Scan.status == ScanStatus.running)
+            select(Scan)
+            .where(Scan.status == ScanStatus.running)
+            .options(selectinload(Scan.scope))
         )
         running_scans = result.scalars().all()
-        
+
         count = 0
         for scan in running_scans:
             # Log the interruption
@@ -124,31 +195,41 @@ class ScanService:
                 severity="info"
             )
             db.add(event)
-            
-            # Re-queue the task
-            # We need to fetch the scope value first
-            # Since scope is lazy loaded, we might need to ensure it's available or fetch it
-            # In the model definition, scope is lazy="selectin", so it should be there if we awaited the query correctly?
-            # Actually result.scalars().all() with async session and selectin load should work.
-            # Let's verify if scope is loaded.
-            
+
             if scan.scope:
-                 celery_app.send_task(
-                    'src.tasks.run_scan', 
-                    args=[scan.scope.value, str(scan.id)], 
-                    queue='discovery'
-                )
-                 count += 1
-                 logger.info(f"Resumed scan {scan.id} for scope {scan.scope.value}")
+                # Get program for scan config
+                program = await crud.get_program(db, scan.scope.program_id)
+                if program:
+                    # Build scan configuration
+                    scan_config = ScanService._build_scan_config(
+                        scan.scan_depth,
+                        program,
+                        str(scan.id),
+                        scan.scope.value,
+                        specific_port=scan.scope.port
+                    )
+
+                    celery_app.send_task(
+                        'src.tasks.run_scan',
+                        args=[scan.scope.value, str(scan.id)],
+                        kwargs={'scan_config': scan_config},
+                        queue='discovery'
+                    )
+                    count += 1
+                    logger.info(f"Resumed scan {scan.id} for scope {scan.scope.value}")
+                else:
+                    logger.error(f"Could not resume scan {scan.id}: Program not found.")
+                    scan.status = ScanStatus.failed
+                    db.add(ScanEvent(scan_id=scan.id, message="Failed to resume: Program not found", severity="error"))
             else:
                 logger.error(f"Could not resume scan {scan.id}: Scope not found or not loaded.")
                 scan.status = ScanStatus.failed
                 db.add(ScanEvent(scan_id=scan.id, message="Failed to resume: Scope not found", severity="error"))
-            
+
         if count > 0:
             await db.commit()
             logger.info(f"Resumed {count} interrupted scans.")
-        
+
         return count
 
     @staticmethod

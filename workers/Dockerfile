@@ -34,6 +34,13 @@ RUN wget -q https://github.com/projectdiscovery/nuclei/releases/download/v3.2.9/
     && rm nuclei_3.2.9_linux_amd64.zip \
     && chmod +x /usr/local/bin/nuclei
 
+# httpx (for technology detection)
+RUN wget -q https://github.com/projectdiscovery/httpx/releases/download/v1.6.8/httpx_1.6.8_linux_amd64.zip \
+    && unzip -o httpx_1.6.8_linux_amd64.zip \
+    && mv httpx /usr/local/bin/ \
+    && rm httpx_1.6.8_linux_amd64.zip \
+    && chmod +x /usr/local/bin/httpx
+
 # Update Nuclei Templates
 RUN nuclei -update-templates
 
@@ -70,6 +77,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=tools-installer /usr/local/bin/subfinder /usr/local/bin/
 COPY --from=tools-installer /usr/local/bin/naabu /usr/local/bin/
 COPY --from=tools-installer /usr/local/bin/nuclei /usr/local/bin/
+COPY --from=tools-installer /usr/local/bin/httpx /usr/local/bin/
 
 # Copy nuclei templates
 COPY --from=tools-installer /root/nuclei-templates /root/nuclei-templates

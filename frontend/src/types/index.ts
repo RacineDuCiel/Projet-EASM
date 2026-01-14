@@ -18,12 +18,20 @@ export interface DashboardStats {
     };
 }
 
+export type ScanDepth = 'fast' | 'deep';
+
 export interface Service {
     id: string;
     port: number;
     protocol: string;
     service_name?: string;
     banner?: string;
+    // Technology detection fields (populated by httpx)
+    technologies?: string[];
+    web_server?: string;
+    waf_detected?: string;
+    tls_version?: string;
+    response_time_ms?: number;
 }
 
 export interface Vulnerability {
@@ -61,6 +69,11 @@ export interface Program {
     scan_frequency?: 'never' | 'daily' | 'weekly' | 'monthly';
     created_at: string;
     scopes: Scope[];
+    // Scan configuration
+    scan_depth: ScanDepth;
+    custom_ports?: string;
+    nuclei_rate_limit?: number;
+    nuclei_timeout?: number;
 }
 export interface User {
     id: string;
@@ -75,6 +88,7 @@ export interface Scan {
     id: string;
     scope_id: string;
     scan_type: 'passive' | 'active' | 'full';
+    scan_depth: ScanDepth;
     status: 'pending' | 'running' | 'completed' | 'failed';
     started_at: string;
     completed_at?: string;

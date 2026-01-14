@@ -4,7 +4,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from src.db.session import Base
-from .enums import ScanType, ScanStatus
+from .enums import ScanType, ScanStatus, ScanDepth
 
 class Scan(Base):
     __tablename__ = "scans"
@@ -12,6 +12,7 @@ class Scan(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     scope_id = Column(UUID(as_uuid=True), ForeignKey("scopes.id"), nullable=False)
     scan_type = Column(SqlEnum(ScanType), nullable=False)
+    scan_depth = Column(SqlEnum(ScanDepth), default=ScanDepth.fast, nullable=False)
     status = Column(SqlEnum(ScanStatus), default=ScanStatus.pending)
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)

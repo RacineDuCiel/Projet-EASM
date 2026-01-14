@@ -49,6 +49,13 @@ class Service(Base):
     service_name = Column(String, nullable=True)
     banner = Column(Text, nullable=True)
 
+    # Technology detection fields (populated by httpx)
+    technologies = Column(Text, nullable=True)  # JSON array: ["nginx", "wordpress", "react"]
+    web_server = Column(String, nullable=True)  # e.g., "nginx/1.18.0"
+    waf_detected = Column(String, nullable=True)  # e.g., "cloudflare"
+    tls_version = Column(String, nullable=True)  # e.g., "TLSv1.3"
+    response_time_ms = Column(Integer, nullable=True)
+
     asset = relationship("Asset", back_populates="services", lazy="selectin")
     vulnerabilities = relationship("Vulnerability", back_populates="service", lazy="selectin")
 
