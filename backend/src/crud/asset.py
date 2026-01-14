@@ -180,3 +180,58 @@ async def get_asset(db: AsyncSession, asset_id: UUID):
         )
     )
     return result.scalar_one_or_none()
+
+
+async def get_asset_by_value(db: AsyncSession, value: str, scope_id: UUID):
+    """Get an asset by its value and scope."""
+    result = await db.execute(
+        select(models.Asset)
+        .where(and_(models.Asset.value == value, models.Asset.scope_id == scope_id))
+        .options(
+            selectinload(models.Asset.services),
+            selectinload(models.Asset.vulnerabilities)
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_or_create_service(
+    db: AsyncSession, asset_id: UUID, port: int, service_name: str = "unknown"
+) -> models.Service:
+    """Get or create a service for an asset."""
+    result = await db.execute(
+        select(models.Service)
+        .where(and_(
+            models.Service.asset_id == asset_id,
+            models.Service.port == port,
+            models.Service.protocol == "tcp"
+        ))
+    )
+    db_service = result.scalar_one_or_none()
+    
+    if not db_service:
+        db_service = models.Service(
+            asset_id=asset_id,
+            port=port,
+            protocol="tcp",
+            service_name=service_name
+        )
+        db.add(db_service)
+        await db.flush()
+        logger.info(f"Created service on port {port} for asset {asset_id}")
+    
+    return db_service
+
+
+async def get_vulnerability_by_title(
+    db: AsyncSession, asset_id: UUID, title: str
+) -> models.Vulnerability:
+    """Get a vulnerability by asset and title."""
+    result = await db.execute(
+        select(models.Vulnerability)
+        .where(and_(
+            models.Vulnerability.asset_id == asset_id,
+            models.Vulnerability.title == title
+        ))
+    )
+    return result.scalar_one_or_none()

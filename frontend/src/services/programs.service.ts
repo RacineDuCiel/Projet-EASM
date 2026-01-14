@@ -13,8 +13,9 @@ export const programsService = {
     delete: async (id: string) => {
         await api.delete(`/programs/${id}`);
     },
-    addScope: async (programId: string, value: string, type: string) => {
-        const response = await api.post(`/programs/${programId}/scopes/`, { value, scope_type: type });
+    addScope: async (programId: string, value: string) => {
+        // Le backend parse automatiquement et détecte le type
+        const response = await api.post(`/programs/${programId}/scopes/`, { value });
         return response.data;
     },
     deleteScope: async (programId: string, scopeId: string) => {

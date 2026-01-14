@@ -55,3 +55,77 @@ class AssetService:
         db_asset, _ = await crud.create_asset(db, asset, scope_id)
         return db_asset
 
+    async def add_vulnerability_realtime(
+        self,
+        db: AsyncSession,
+        scope_id: UUID,
+        vuln_data: schemas.VulnerabilityStreamCreate,
+        background_tasks: BackgroundTasks
+    ) -> models.Vulnerability:
+        """
+        Ajoute une vulnérabilité en temps réel lors d'un scan.
+        Crée l'asset s'il n'existe pas, puis ajoute la vulnérabilité.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # 1. Chercher ou créer l'asset
+        db_asset = await crud.get_asset_by_value(db, vuln_data.asset_value, scope_id)
+        
+        if not db_asset:
+            # Créer l'asset
+            asset_create = schemas.AssetCreate(
+                value=vuln_data.asset_value,
+                asset_type=vuln_data.asset_type,
+                is_active=True,
+                services=[],
+                vulnerabilities=[]
+            )
+            db_asset, _ = await crud.create_asset(db, asset_create, scope_id)
+            logger.info(f"Created new asset {vuln_data.asset_value} for streaming vulnerability")
+        
+        # 2. Gérer le service si un port est spécifié
+        service_id = None
+        if vuln_data.port:
+            # Chercher ou créer le service
+            db_service = await crud.get_or_create_service(
+                db, 
+                db_asset.id, 
+                vuln_data.port,
+                vuln_data.service_name or "unknown"
+            )
+            service_id = db_service.id
+        
+        # 3. Vérifier si la vulnérabilité existe déjà (deduplication)
+        existing_vuln = await crud.get_vulnerability_by_title(
+            db, db_asset.id, vuln_data.title
+        )
+        
+        if existing_vuln:
+            logger.debug(f"Vulnerability '{vuln_data.title}' already exists for {vuln_data.asset_value}")
+            return existing_vuln
+        
+        # 4. Créer la vulnérabilité
+        vuln_create = models.Vulnerability(
+            asset_id=db_asset.id,
+            service_id=service_id,
+            title=vuln_data.title,
+            severity=vuln_data.severity,
+            description=vuln_data.description,
+            status=models.VulnStatus.open
+        )
+        
+        db.add(vuln_create)
+        await db.commit()
+        await db.refresh(vuln_create)
+        
+        logger.info(f"Streamed new vulnerability: {vuln_data.title} on {vuln_data.asset_value}")
+        
+        # 5. Notification en arrière-plan
+        background_tasks.add_task(
+            self.notification_manager.notify_new_vulnerabilities,
+            [vuln_create]
+        )
+        
+        return vuln_create
+

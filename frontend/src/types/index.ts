@@ -50,6 +50,7 @@ export interface Scope {
     id: string;
     scope_type: 'domain' | 'ip_range' | 'hostname';
     value: string;
+    port?: number;  // Support pour la syntaxe Cible:Port
     program_id: string;
 }
 

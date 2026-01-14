@@ -24,8 +24,7 @@ const programSchema = z.object({
 type ProgramFormValues = z.infer<typeof programSchema>;
 
 const scopeSchema = z.object({
-    value: z.string().min(1, "Value is required"),
-    type: z.enum(['domain', 'ip_range', 'hostname']),
+    value: z.string().min(1, "Asset target is required"),
 });
 
 type ScopeFormValues = z.infer<typeof scopeSchema>;
@@ -88,12 +87,10 @@ function ProgramCard({ program, onEdit }: { program: Program, onEdit: (program: 
     const { toast } = useToast();
 
     // Scope Form
-    const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<ScopeFormValues>({
+    const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<ScopeFormValues>({
         resolver: zodResolver(scopeSchema),
-        defaultValues: { type: 'domain', value: '' }
+        defaultValues: { value: '' }
     });
-
-    const scopeType = watch('type');
 
     const deleteProgramMutation = useMutation({
         mutationFn: programsService.delete,
@@ -107,14 +104,15 @@ function ProgramCard({ program, onEdit }: { program: Program, onEdit: (program: 
     });
 
     const addScopeMutation = useMutation({
-        mutationFn: (data: ScopeFormValues) => programsService.addScope(program.id, data.value, data.type),
+        mutationFn: (data: ScopeFormValues) => programsService.addScope(program.id, data.value),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['programs'] });
-            toast({ title: "Success", description: "Scope added successfully." });
-            reset({ type: scopeType, value: '' }); // Keep the selected type
+            toast({ title: "Success", description: "Asset added successfully. System auto-detected the type." });
+            reset({ value: '' });
         },
-        onError: () => {
-            toast({ variant: "destructive", title: "Error", description: "Failed to add scope." });
+        onError: (error: any) => {
+            const errorMsg = error?.response?.data?.detail || "Failed to add asset. Check format.";
+            toast({ variant: "destructive", title: "Error", description: errorMsg });
         }
     });
 
@@ -178,7 +176,7 @@ function ProgramCard({ program, onEdit }: { program: Program, onEdit: (program: 
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Type</TableHead>
-                                <TableHead>Value</TableHead>
+                                <TableHead>Target</TableHead>
                                 <TableHead className="w-[100px]">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -191,7 +189,9 @@ function ProgramCard({ program, onEdit }: { program: Program, onEdit: (program: 
                                         {scope.scope_type === 'hostname' && <Server className="h-4 w-4 text-orange-500" />}
                                         <span className="capitalize">{scope.scope_type.replace('_', ' ')}</span>
                                     </TableCell>
-                                    <TableCell className="font-mono text-sm">{scope.value}</TableCell>
+                                    <TableCell className="font-mono text-sm">
+                                        {scope.value}{scope.port ? `:${scope.port}` : ''}
+                                    </TableCell>
                                     <TableCell>
                                         <Button
                                             variant="ghost"
@@ -208,39 +208,26 @@ function ProgramCard({ program, onEdit }: { program: Program, onEdit: (program: 
                             {program.scopes.length === 0 && (
                                 <TableRow>
                                     <TableCell colSpan={3} className="text-center text-muted-foreground py-6">
-                                        No scopes defined yet. Add one below.
+                                        No targets defined yet. Add one below.
                                     </TableCell>
                                 </TableRow>
                             )}
                         </TableBody>
                     </Table>
 
-                    {/* Add Scope Form */}
+                    {/* Add Scope Form - Simplifié avec un seul champ "Asset" */}
                     <form onSubmit={handleSubmit(onAddScope)} className="flex gap-2 items-start pt-4 border-t">
-                        <div className="grid w-[150px] items-center gap-1.5">
-                            <Label>Type</Label>
-                            <Select
-                                value={scopeType}
-                                onValueChange={(val) => setValue('type', val as any)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="domain">Domain</SelectItem>
-                                    <SelectItem value="ip_range">IP Range</SelectItem>
-                                    <SelectItem value="hostname">Hostname</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid w-full max-w-sm items-center gap-1.5">
-                            <Label>Value</Label>
+                        <div className="grid w-full max-w-lg items-center gap-1.5">
+                            <Label>Asset Target</Label>
                             <Input
-                                placeholder={scopeType === 'ip_range' ? '192.168.1.0/24' : 'example.com'}
+                                placeholder="example.com, 192.168.1.0/24, sub.domain.com:8080, or hostname"
                                 {...register('value')}
                                 className={errors.value ? "border-destructive" : ""}
                             />
                             {errors.value && <span className="text-xs text-destructive">{errors.value.message}</span>}
+                            <p className="text-xs text-muted-foreground">
+                                Auto-detects domain, IP/CIDR, or hostname. Supports port syntax (e.g., example.com:8080)
+                            </p>
                         </div>
                         <Button
                             type="submit"
@@ -249,7 +236,7 @@ function ProgramCard({ program, onEdit }: { program: Program, onEdit: (program: 
                             disabled={isSubmitting}
                         >
                             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                            Add Scope
+                            Add Asset
                         </Button>
                     </form>
                 </div>

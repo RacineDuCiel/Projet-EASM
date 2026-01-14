@@ -69,6 +69,7 @@ async def add_scan_assets(
     """
     Endpoint pour ajouter des assets au fil de l'eau (incremental updates).
     N'affecte pas le statut du scan.
+    Supporte le streaming temps réel de vulnérabilités.
     """
     try:
         processed_count, error_count = await asset_service.process_asset_chunk(
@@ -77,6 +78,37 @@ async def add_scan_assets(
         return {"status": "assets_added", "count": processed_count, "errors": error_count}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{scan_id}/vulnerabilities")
+async def add_vulnerability_stream(
+    scan_id: UUID,
+    vulnerability: schemas.VulnerabilityStreamCreate,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(database.get_db)
+):
+    """
+    Endpoint dédié au streaming temps réel de vulnérabilités.
+    Permet aux workers de remonter instantanément chaque vulnérabilité découverte.
+    """
+    try:
+        # Vérifier que le scan existe
+        scan = await ScanService.get_scan(db, scan_id)
+        if not scan:
+            raise HTTPException(status_code=404, detail="Scan not found")
+        
+        # Créer ou mettre à jour l'asset et ajouter la vulnérabilité
+        db_vuln = await asset_service.add_vulnerability_realtime(
+            db, scan.scope_id, vulnerability, background_tasks
+        )
+        
+        return {
+            "status": "vulnerability_added",
+            "vulnerability_id": str(db_vuln.id),
+            "asset_id": str(db_vuln.asset_id)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add vulnerability: {str(e)}")
 
 @router.post("/{scan_id}/events", response_model=schemas.ScanEvent)
 async def add_scan_event(scan_id: UUID, event: schemas.ScanEventCreate, db: AsyncSession = Depends(database.get_db)):

@@ -28,6 +28,16 @@ class VulnerabilityBase(BaseModel):
 class VulnerabilityCreate(VulnerabilityBase):
     pass
 
+class VulnerabilityStreamCreate(BaseModel):
+    """Schema pour le streaming temps réel de vulnérabilités."""
+    asset_value: str  # La cible (domain/IP/hostname)
+    asset_type: AssetType  # Type d'asset
+    title: str
+    severity: Severity
+    description: Optional[str] = None
+    port: Optional[int] = None  # Port associé si applicable
+    service_name: Optional[str] = None
+
 class VulnerabilityUpdate(BaseModel):
     status: Optional[VulnStatus] = None
     severity: Optional[Severity] = None

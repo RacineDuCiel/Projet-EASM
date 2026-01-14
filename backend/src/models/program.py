@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, ForeignKey, Enum as SqlEnum
+from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, Enum as SqlEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -24,6 +24,7 @@ class Scope(Base):
     program_id = Column(UUID(as_uuid=True), ForeignKey("programs.id"), nullable=False)
     scope_type = Column(SqlEnum(ScopeType), nullable=False)
     value = Column(String, nullable=False)
+    port = Column(Integer, nullable=True)  # Support pour la syntaxe Cible:Port
 
     program = relationship("Program", back_populates="scopes", lazy="selectin")
     scans = relationship("Scan", back_populates="scope", cascade="all, delete-orphan", lazy="selectin")

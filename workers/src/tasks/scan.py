@@ -1,5 +1,6 @@
 """
 Scan tasks for port scanning and vulnerability detection.
+Implémente le streaming temps réel des vulnérabilités.
 """
 import logging
 from typing import List, Dict, Any, Set
@@ -9,8 +10,8 @@ from src.utils import log_event, post_to_backend, HTTP_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
-# Batch size for sending vulnerabilities to backend
-VULN_BATCH_SIZE = 5
+# Désactivé: on envoie maintenant immédiatement chaque vulnérabilité
+# VULN_BATCH_SIZE = 5
 
 
 @app.task(
@@ -61,6 +62,7 @@ def port_scan_task(asset: Dict[str, Any], scan_id: str) -> Dict[str, Any]:
 def vuln_scan_task(asset: Dict[str, Any], scan_id: str) -> Dict[str, Any]:
     """
     Step 3b: Vulnerability scanning with Nuclei
+    STREAMING EN TEMPS RÉEL: Chaque vulnérabilité est envoyée immédiatement au backend.
     """
     domain = asset["value"]
     services = asset.get("services", [])
@@ -70,35 +72,67 @@ def vuln_scan_task(asset: Dict[str, Any], scan_id: str) -> Dict[str, Any]:
     
     try:
         targets = _build_target_urls(domain, services)
-        all_vulns, seen_titles = [], set()
-        current_batch: List[Dict] = []
+        vuln_count = 0
+        seen_titles: Set[str] = set()
         
         for target_url in targets:
             for finding in tools.run_nuclei(target_url):
-                if finding["title"] not in seen_titles:
-                    seen_titles.add(finding["title"])
-                    current_batch.append(finding)
-                    all_vulns.append(finding)
+                # Deduplication locale
+                if finding["title"] in seen_titles:
+                    continue
                     
-                    # Send batch when full
-                    if len(current_batch) >= VULN_BATCH_SIZE:
-                        _send_vuln_batch(asset, current_batch, scan_id, domain)
-                        current_batch = []
-
-        # Send remaining findings
-        if current_batch:
-            _send_vuln_batch(asset, current_batch, scan_id, domain)
+                seen_titles.add(finding["title"])
+                vuln_count += 1
+                
+                # STREAMING IMMÉDIAT: Envoyer chaque vulnérabilité dès sa découverte
+                _stream_vulnerability(domain, finding, scan_id)
         
-        asset["vulnerabilities"] = all_vulns
-        logger.info(f"Vulnerability scan completed for {domain}: {len(all_vulns)} unique vulnerabilities")
-        log_event(scan_id, f"Vuln scan finished on {domain}. Found {len(all_vulns)} vulnerabilities.")
+        logger.info(f"Vulnerability scan completed for {domain}: {vuln_count} unique vulnerabilities")
+        log_event(scan_id, f"Vuln scan finished on {domain}. Found {vuln_count} vulnerabilities.")
         
+        # Ne pas stocker dans asset, car déjà en DB via streaming
+        asset["vulnerabilities"] = []
         return asset
+        
     except Exception as e:
         logger.error(f"Vuln scan failed for {domain}: {e}", exc_info=True)
         log_event(scan_id, f"Vuln scan failed on {domain}: {str(e)}", "error")
         asset["vulnerabilities"] = []
         return asset
+
+
+def _stream_vulnerability(domain: str, finding: Dict, scan_id: str) -> None:
+    """
+    Envoie immédiatement une vulnérabilité au backend via le endpoint de streaming.
+    Permet l'affichage instantané dans le Dashboard.
+    """
+    try:
+        # Parser le port depuis l'URL si disponible
+        port = None
+        if ":" in finding.get("matched", ""):
+            try:
+                port_str = finding["matched"].split(":")[-1].split("/")[0]
+                port = int(port_str)
+            except (ValueError, IndexError):
+                pass
+        
+        payload = {
+            "asset_value": domain,
+            "asset_type": "subdomain",  # Type par défaut, peut être amélioré
+            "title": finding["title"],
+            "severity": finding["severity"],
+            "description": finding.get("description", ""),
+            "port": port,
+            "service_name": finding.get("service_name")
+        }
+        
+        resp = post_to_backend(f"/scans/{scan_id}/vulnerabilities", payload)
+        resp.raise_for_status()
+        logger.info(f"Streamed vulnerability: {finding['title']} on {domain}")
+        
+    except Exception as e:
+        logger.error(f"Failed to stream vulnerability {finding.get('title', 'Unknown')}: {e}")
+        # Continue scanning, ne pas lever d'exception
 
 
 def _build_target_urls(domain: str, services: List[Dict]) -> List[str]:
@@ -126,17 +160,3 @@ def _build_target_urls(domain: str, services: List[Dict]) -> List[str]:
         targets.add(f"https://{domain}")
     
     return list(targets)
-
-
-def _send_vuln_batch(asset: Dict, vulns: List[Dict], scan_id: str, domain: str) -> None:
-    """Send a batch of vulnerabilities to the backend using pooled connection."""
-    try:
-        asset_update = asset.copy()
-        asset_update["vulnerabilities"] = vulns
-        
-        resp = post_to_backend(f"/scans/{scan_id}/assets", [asset_update])
-        resp.raise_for_status()
-        logger.info(f"Sent batch of {len(vulns)} vulnerabilities for {domain}")
-    except Exception as e:
-        logger.error(f"Failed to send vulnerability batch for {domain}: {e}", exc_info=True)
-        # Continue scanning, don't raise

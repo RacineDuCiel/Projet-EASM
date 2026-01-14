@@ -27,7 +27,12 @@ async def update_program(db: AsyncSession, program_id: UUID, program_in: schemas
     return db_program
 
 async def get_programs(db: AsyncSession, skip: int = 0, limit: int = 100):
-    result = await db.execute(select(models.Program).offset(skip).limit(limit))
+    result = await db.execute(
+        select(models.Program)
+        .options(selectinload(models.Program.scopes))
+        .offset(skip)
+        .limit(limit)
+    )
     return result.scalars().all()
 
 async def get_program(db: AsyncSession, program_id: UUID):
@@ -39,11 +44,25 @@ async def get_program(db: AsyncSession, program_id: UUID):
     return result.scalar_one_or_none()
 
 async def create_scope(db: AsyncSession, scope: schemas.ScopeCreate, program_id: UUID):
-    # Explicitly construct Scope to ensure correct types (especially Enum)
+    # Parser l'input utilisateur pour détecter le type et extraire le port
+    from src.core.validators import parse_asset_input
+    
+    try:
+        parsed_data = parse_asset_input(scope.value)
+    except ValueError as e:
+        # Re-raise pour que l'endpoint puisse retourner une 400
+        raise ValueError(f"Invalid asset format: {str(e)}")
+    
+    # Extraire les données parsées
+    value = parsed_data['value']
+    asset_type = parsed_data['asset_type']
+    port = parsed_data.get('port')
+    
     db_scope = models.Scope(
         program_id=program_id,
-        scope_type=scope.scope_type,
-        value=scope.value
+        scope_type=models.ScopeType(asset_type),  # Convertir en enum
+        value=value,
+        port=port
     )
     db.add(db_scope)
     await db.commit()

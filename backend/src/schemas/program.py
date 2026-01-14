@@ -1,5 +1,4 @@
 from pydantic import BaseModel, ConfigDict, field_validator
-from pydantic import BaseModel, ConfigDict, field_validator
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
@@ -7,26 +6,23 @@ from src.models.enums import ScopeType, ScanFrequency
 from src.core import validators
 
 class ScopeBase(BaseModel):
-    scope_type: ScopeType
-    value: str
+    value: str  # Le champ unifié "Asset"
 
 class ScopeCreate(ScopeBase):
     @field_validator('value')
     @classmethod
-    def validate_scope_value(cls, v, info):
-        scope_type = info.data.get('scope_type')
-        if scope_type == ScopeType.domain:
-            return validators.validate_domain(v)
-        elif scope_type == ScopeType.ip_range:
-            return validators.validate_ip_range(v)
-        elif scope_type == ScopeType.hostname:
-            return validators.validate_hostname(v)
-        else:
-            raise ValueError(f"Unknown scope type: {scope_type}")
+    def validate_asset_not_empty(cls, v):
+        """Validation basique - le parsing se fait dans le CRUD."""
+        if not v or not v.strip():
+            raise ValueError("Asset value cannot be empty")
+        return v.strip()
 
-class Scope(ScopeBase):
+class Scope(BaseModel):
     id: UUID
     program_id: UUID
+    scope_type: ScopeType
+    value: str
+    port: Optional[int] = None
     
     model_config = ConfigDict(from_attributes=True)
 

@@ -4,7 +4,7 @@ Sécurise l'application contre les injections et formats invalides.
 """
 import re
 import ipaddress
-from typing import Optional
+from typing import Optional, Tuple, Dict, Any
 from pydantic import validator
 
 
@@ -264,3 +264,134 @@ class ValidatedIPRange:
     def validate_ip_range_field(cls, v):
         """Valide le champ 'value' comme plage IP."""
         return validate_ip_range(v)
+
+
+def parse_asset_input(asset_input: str) -> Dict[str, Any]:
+    """
+    Parse intelligemment un input utilisateur pour déterminer automatiquement
+    le type d'asset (domain/IP/hostname) et extraire le port si spécifié.
+    
+    Supporte la syntaxe: Cible:Port (ex: 192.168.1.15:8080 ou sub.example.com:3000)
+    
+    Args:
+        asset_input: L'input utilisateur (domain, IP, hostname, ou avec :port)
+        
+    Returns:
+        Dict contenant:
+            - 'value': La cible nettoyée (sans port)
+            - 'asset_type': Le type détecté ('domain', 'ip_range', 'hostname')
+            - 'port': Le port s'il est spécifié (int ou None)
+            
+    Raises:
+        ValueError: Si l'input est invalide ou ambigu
+    """
+    if not asset_input:
+        raise ValueError("Asset input cannot be empty")
+    
+    asset_input = asset_input.strip()
+    
+    # Vérifier les caractères dangereux
+    for char in DANGEROUS_CHARS:
+        if char in asset_input:
+            raise ValueError(f"Asset contains invalid character: {char}")
+    
+    # Extraire le port si présent (syntaxe Cible:Port)
+    port = None
+    target = asset_input
+    
+    # Pour IPv6, gérer le format [ipv6]:port
+    if asset_input.startswith('[') and ']:' in asset_input:
+        parts = asset_input.rsplit(']:', 1)
+        if len(parts) == 2:
+            target = parts[0][1:]  # Enlever le [
+            try:
+                port = validate_port(int(parts[1]))
+            except (ValueError, TypeError):
+                raise ValueError(f"Invalid port in IPv6 format: {parts[1]}")
+    # Pour IPv4, domain, hostname avec port
+    elif ':' in asset_input:
+        # Vérifier si c'est une IPv6 sans port (contient plusieurs :)
+        if asset_input.count(':') > 1:
+            # Probablement une IPv6 sans port
+            try:
+                ipaddress.IPv6Address(asset_input)
+                target = asset_input
+                port = None
+            except ValueError:
+                raise ValueError(f"Invalid IPv6 address: {asset_input}")
+        else:
+            # Format standard Cible:Port
+            parts = asset_input.rsplit(':', 1)
+            if len(parts) == 2:
+                target = parts[0]
+                try:
+                    port = validate_port(int(parts[1]))
+                except (ValueError, TypeError):
+                    raise ValueError(f"Invalid port: {parts[1]}")
+    
+    # Détection automatique du type d'asset
+    asset_type = None
+    validated_value = None
+    
+    # 1. Tenter IP unique ou CIDR
+    try:
+        # IP unique
+        ipaddress.ip_address(target)
+        validated_value = target
+        asset_type = 'ip_range'
+    except ValueError:
+        # Tenter CIDR
+        try:
+            network = ipaddress.ip_network(target, strict=False)
+            validated_value = str(network)
+            asset_type = 'ip_range'
+        except ValueError:
+            pass
+    
+    # 2. Si ce n'est pas une IP, tenter domain (avec TLD)
+    if asset_type is None:
+        try:
+            validated_value = validate_domain(target)
+            asset_type = 'domain'
+        except ValueError:
+            pass
+    
+    # 3. Si ce n'est pas un domain, tenter hostname (sans TLD requis)
+    if asset_type is None:
+        try:
+            validated_value = validate_hostname(target)
+            asset_type = 'hostname'
+        except ValueError:
+            raise ValueError(
+                f"Invalid asset format: '{target}'. Must be a valid domain, IP address, CIDR range, or hostname."
+            )
+    
+    return {
+        'value': validated_value,
+        'asset_type': asset_type,
+        'port': port
+    }
+
+
+def extract_target_with_port(asset_data: Dict[str, Any]) -> str:
+    """
+    Construit la cible complète avec port pour les scanners.
+    
+    Args:
+        asset_data: Dict avec 'value' et optionnellement 'port'
+        
+    Returns:
+        La cible formatée (ex: "example.com:8080" ou "192.168.1.1" si pas de port)
+    """
+    value = asset_data.get('value', '')
+    port = asset_data.get('port')
+    
+    if port:
+        # Pour IPv6, utiliser le format [ipv6]:port
+        try:
+            ipaddress.IPv6Address(value)
+            return f"[{value}]:{port}"
+        except ValueError:
+            return f"{value}:{port}"
+    
+    return value
