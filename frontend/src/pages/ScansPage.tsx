@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
-import type { Scan, Program, ScanDepth } from '@/types';
+import type { Scan, Program, ScanProfile } from '@/types';
 import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,14 +14,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Play, Loader2, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
+import { ProfileSelector, ProfileBadge, getProfileDisplayName } from '@/components/scans/ProfileSelector';
 
 export default function ScansPage() {
     const queryClient = useQueryClient();
     const { user } = useAuthStore();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [selectedScope, setSelectedScope] = useState('');
-    const [selectedType, setSelectedType] = useState('passive');
-    const [selectedDepth, setSelectedDepth] = useState<ScanDepth>('fast');
+    const [selectedProfile, setSelectedProfile] = useState<ScanProfile | null>(null);
     const { toast } = useToast();
 
     // Fetch Scans
@@ -51,18 +51,17 @@ export default function ScansPage() {
         mutationFn: async () => {
             await api.post('/scans/', {
                 scope_id: selectedScope,
-                scan_type: selectedType,
-                scan_depth: selectedDepth
+                scan_profile: selectedProfile
             });
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['scans'] });
             setIsCreateOpen(false);
             setSelectedScope('');
-            setSelectedDepth('fast');
+            setSelectedProfile(null);
             toast({
                 title: "Scan started",
-                description: `${selectedDepth === 'deep' ? 'Deep' : 'Fast'} scan has been successfully launched.`,
+                description: `${selectedProfile ? getProfileDisplayName(selectedProfile) : 'Scan'} has been successfully launched.`,
             });
         },
         onError: () => {
@@ -100,7 +99,7 @@ export default function ScansPage() {
     };
 
     const handleCreateScan = () => {
-        if (selectedScope) {
+        if (selectedScope && selectedProfile) {
             createScanMutation.mutate();
         }
     };
@@ -133,14 +132,14 @@ export default function ScansPage() {
                                 Launch Scan
                             </Button>
                         </DialogTrigger>
-                        <DialogContent>
+                        <DialogContent className="max-w-3xl">
                             <DialogHeader>
                                 <DialogTitle>Launch New Scan</DialogTitle>
                                 <DialogDescription>
-                                    Select a target scope and scan type to start immediately.
+                                    Select a target scope and scan profile to start immediately.
                                 </DialogDescription>
                             </DialogHeader>
-                            <div className="grid gap-4 py-4">
+                            <div className="grid gap-6 py-4">
                                 <div className="grid gap-2">
                                     <Label>Target Scope</Label>
                                     <Select value={selectedScope} onValueChange={setSelectedScope}>
@@ -157,42 +156,17 @@ export default function ScansPage() {
                                     </Select>
                                 </div>
                                 <div className="grid gap-2">
-                                    <Label>Scan Type</Label>
-                                    <Select value={selectedType} onValueChange={setSelectedType}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="passive">Passive Discovery</SelectItem>
-                                            <SelectItem value="full">Full Scan</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>Scan Depth</Label>
-                                    <Select value={selectedDepth} onValueChange={(v) => setSelectedDepth(v as ScanDepth)}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="fast">
-                                                Fast (Recommended)
-                                            </SelectItem>
-                                            <SelectItem value="deep">
-                                                Deep (Exhaustive)
-                                            </SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <p className="text-xs text-muted-foreground">
-                                        {selectedDepth === 'fast'
-                                            ? 'Targeted scan: detects ~80% of vulnerabilities in ~20% of the time'
-                                            : 'Comprehensive scan: runs all templates, ideal for overnight scans'}
-                                    </p>
+                                    <Label>Scan Profile</Label>
+                                    <ProfileSelector
+                                        value={selectedProfile}
+                                        onChange={setSelectedProfile}
+                                        showDescriptions={true}
+                                    />
                                 </div>
                             </div>
                             <DialogFooter>
                                 <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-                                <Button onClick={handleCreateScan} disabled={createScanMutation.isPending || !selectedScope}>
+                                <Button onClick={handleCreateScan} disabled={createScanMutation.isPending || !selectedScope || !selectedProfile}>
                                     {createScanMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                     Launch
                                 </Button>
@@ -215,9 +189,9 @@ export default function ScansPage() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Target</TableHead>
-                                    <TableHead>Type</TableHead>
-                                    <TableHead>Depth</TableHead>
+                                    <TableHead>Profile</TableHead>
                                     <TableHead>Status</TableHead>
+                                    <TableHead>Progress</TableHead>
                                     <TableHead>Started At</TableHead>
                                     <TableHead>Duration</TableHead>
                                     <TableHead>Actions</TableHead>
@@ -229,17 +203,30 @@ export default function ScansPage() {
                                         <TableCell className="font-medium">
                                             {allScopes.find(s => s.id === scan.scope_id)?.value || scan.scope_id}
                                         </TableCell>
-                                        <TableCell className="capitalize">{scan.scan_type}</TableCell>
                                         <TableCell>
-                                            <Badge variant="outline" className={scan.scan_depth === 'deep' ? 'border-purple-500 text-purple-700' : 'border-blue-500 text-blue-700'}>
-                                                {scan.scan_depth === 'deep' ? 'Deep' : 'Fast'}
-                                            </Badge>
+                                            <ProfileBadge profile={scan.scan_profile} />
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant="secondary" className={getStatusColor(scan.status)}>
                                                 {scan.status === 'running' && <RefreshCw className="mr-1 h-3 w-3 animate-spin" />}
                                                 {scan.status}
                                             </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="text-sm">
+                                                <span className="font-medium">{scan.assets_scanned}</span>
+                                                <span className="text-muted-foreground"> assets</span>
+                                                {scan.assets_skipped > 0 && (
+                                                    <span className="text-muted-foreground ml-1">
+                                                        ({scan.assets_skipped} skipped)
+                                                    </span>
+                                                )}
+                                                {scan.vulns_found > 0 && (
+                                                    <span className="ml-2 text-red-600 font-medium">
+                                                        {scan.vulns_found} vulns
+                                                    </span>
+                                                )}
+                                            </div>
                                         </TableCell>
                                         <TableCell>
                                             {format(new Date(scan.started_at), 'MMM d, yyyy HH:mm')}

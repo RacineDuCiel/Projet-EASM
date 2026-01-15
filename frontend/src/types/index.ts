@@ -18,7 +18,36 @@ export interface DashboardStats {
     };
 }
 
-export type ScanDepth = 'fast' | 'deep';
+// Scan Profiles - replaces ScanType and ScanDepth
+export type ScanProfile =
+    | 'discovery'
+    | 'quick_assessment'
+    | 'standard_assessment'
+    | 'full_audit'
+    | 'continuous_monitoring';
+
+export type ScanPhase =
+    | 'asset_discovery'
+    | 'service_enumeration'
+    | 'tech_detection'
+    | 'vuln_assessment'
+    | 'deep_analysis';
+
+export type AssetCriticality =
+    | 'critical'
+    | 'high'
+    | 'medium'
+    | 'low'
+    | 'unclassified';
+
+export interface ScanProfileInfo {
+    profile: ScanProfile;
+    display_name: string;
+    description: string;
+    phases: ScanPhase[];
+    estimated_duration: string;
+    intensity: string;
+}
 
 export interface Service {
     id: string;
@@ -50,6 +79,10 @@ export interface Asset {
     is_active: boolean;
     first_seen: string;
     last_seen: string;
+    // Criticality and scan tracking
+    criticality: AssetCriticality;
+    last_scanned_at?: string;
+    scan_count: number;
     services: Service[];
     vulnerabilities: Vulnerability[];
 }
@@ -70,10 +103,11 @@ export interface Program {
     created_at: string;
     scopes: Scope[];
     // Scan configuration
-    scan_depth: ScanDepth;
+    default_scan_profile: ScanProfile;
     custom_ports?: string;
     nuclei_rate_limit?: number;
     nuclei_timeout?: number;
+    delta_scan_threshold_hours: number;
 }
 export interface User {
     id: string;
@@ -87,11 +121,20 @@ export interface User {
 export interface Scan {
     id: string;
     scope_id: string;
-    scan_type: 'passive' | 'active' | 'full';
-    scan_depth: ScanDepth;
-    status: 'pending' | 'running' | 'completed' | 'failed';
+    scan_profile: ScanProfile;
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped';
     started_at: string;
     completed_at?: string;
+    // Phase tracking
+    selected_phases?: ScanPhase[];
+    current_phase?: ScanPhase;
+    // Delta scanning
+    is_delta_scan: boolean;
+    delta_threshold_hours?: number;
+    // Statistics
+    assets_scanned: number;
+    assets_skipped: number;
+    vulns_found: number;
 }
 
 export interface SystemLog {

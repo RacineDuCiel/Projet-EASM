@@ -1,9 +1,9 @@
 """
 Discovery tasks for EASM scan orchestration.
-Supports configurable scan depth (fast/deep) with technology-based prioritization.
+Supports profile-based scanning with phase-based execution and delta scanning.
 """
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 from celery import chain, group, chord
 from src.celery_app import app
 from src import tools
@@ -16,27 +16,28 @@ logger = logging.getLogger(__name__)
 def run_scan(target: str, scan_id: str, scan_config: Dict[str, Any] = None):
     """
     Main entry point for scan orchestration.
-    Launches the discovery workflow chain with scan configuration.
-    Now includes passive reconnaissance in parallel with subdomain discovery.
+    Uses profile-based configuration with phase-based execution.
 
     Args:
         target: Domain/IP to scan
         scan_id: UUID of the scan
         scan_config: Configuration dict containing:
-            - scan_depth: "fast" or "deep"
+            - scan_profile: Profile name (discovery, quick_assessment, etc.)
+            - phases: List of phase names to execute
             - ports: Port ranges to scan
-            - nuclei_rate_limit: Rate limit for Nuclei
-            - nuclei_timeout: Timeout for Nuclei
-            - nuclei_retries: Retry count
-            - enable_full_vuln_scan: Whether to run full scan (deep mode only)
-            - passive_recon_enabled: Whether to run passive recon (default: True)
+            - nuclei_rate_limit, nuclei_timeout, nuclei_retries
+            - run_prioritized_templates, run_full_templates
+            - passive_recon_enabled, passive_extended_enabled
+            - is_delta_scan, delta_threshold_hours
             - api_keys: Dict of API keys for passive recon
     """
     scan_config = scan_config or {}
-    scan_depth = scan_config.get("scan_depth", "fast")
+    scan_profile = scan_config.get("scan_profile", "standard_assessment")
+    phases = scan_config.get("phases", ["asset_discovery", "service_enumeration", "tech_detection", "vuln_assessment"])
     passive_recon_enabled = scan_config.get("passive_recon_enabled", True)
+    is_delta_scan = scan_config.get("is_delta_scan", False)
 
-    logger.info(f"Starting scan orchestration for {target} (ID: {scan_id}, depth: {scan_depth})")
+    logger.info(f"Starting scan orchestration for {target} (ID: {scan_id}, profile: {scan_profile})")
 
     # Update status to running
     try:
@@ -45,10 +46,12 @@ def run_scan(target: str, scan_id: str, scan_config: Dict[str, Any] = None):
     except Exception as e:
         logger.error(f"Failed to update scan status to running: {e}")
 
-    # Log scan start with mode info
-    mode_desc = "Fast (prioritized)" if scan_depth == "fast" else "Deep (comprehensive)"
-    passive_desc = " + Passive Recon" if passive_recon_enabled else ""
-    log_event(scan_id, f"Scan started in {mode_desc} mode{passive_desc}")
+    # Log scan start with profile info
+    profile_display = _get_profile_display_name(scan_profile)
+    delta_info = " (delta mode)" if is_delta_scan else ""
+    passive_info = " + Passive Recon" if passive_recon_enabled else ""
+    log_event(scan_id, f"Scan started with profile: {profile_display}{delta_info}{passive_info}")
+    log_event(scan_id, f"Phases: {', '.join(phases)}")
 
     # Launch passive recon in parallel (fire and forget, doesn't block main workflow)
     if passive_recon_enabled:
@@ -56,14 +59,39 @@ def run_scan(target: str, scan_id: str, scan_config: Dict[str, Any] = None):
         passive_recon_orchestrator.delay(target, scan_id, scan_config)
         logger.info(f"Passive recon launched for {target}")
 
-    # Build main workflow: discovery -> schedule_asset_scans (which handles the rest)
-    workflow = chain(
-        discovery_task.s(target, scan_id),
-        schedule_asset_scans.s(scan_id, scan_config)
-    )
-    workflow.apply_async()
+    # Check if asset_discovery phase is enabled
+    if "asset_discovery" in phases:
+        # Build main workflow: discovery -> schedule_asset_scans
+        workflow = chain(
+            discovery_task.s(target, scan_id),
+            schedule_asset_scans.s(scan_id, scan_config)
+        )
+        workflow.apply_async()
+    else:
+        # Skip discovery, just use the target directly
+        assets = [{"value": target, "asset_type": "subdomain", "is_active": True}]
+        schedule_asset_scans.delay(assets, scan_id, scan_config)
 
-    return {"status": "started", "scan_id": scan_id, "depth": scan_depth, "passive_recon": passive_recon_enabled}
+    return {
+        "status": "started",
+        "scan_id": scan_id,
+        "profile": scan_profile,
+        "phases": phases,
+        "passive_recon": passive_recon_enabled,
+        "delta_scan": is_delta_scan
+    }
+
+
+def _get_profile_display_name(profile: str) -> str:
+    """Get human-readable profile name."""
+    display_names = {
+        "discovery": "Discovery",
+        "quick_assessment": "Quick Assessment",
+        "standard_assessment": "Standard Assessment",
+        "full_audit": "Full Audit",
+        "continuous_monitoring": "Continuous Monitoring",
+    }
+    return display_names.get(profile, profile)
 
 
 @app.task(
@@ -76,11 +104,11 @@ def run_scan(target: str, scan_id: str, scan_config: Dict[str, Any] = None):
 )
 def discovery_task(self, target: str, scan_id: str):
     """
-    Step 1: Passive discovery using Subfinder
+    Phase 1: Asset Discovery using Subfinder
     Discovers subdomains for the target domain.
     """
     logger.info(f"Running discovery on {target}...")
-    log_event(scan_id, f"Starting discovery on {target}...")
+    log_event(scan_id, f"Phase 1: Starting asset discovery on {target}...")
 
     try:
         subdomains = tools.run_subfinder(target)
@@ -89,7 +117,7 @@ def discovery_task(self, target: str, scan_id: str):
         if target not in subdomains:
             subdomains.append(target)
 
-        log_event(scan_id, f"Discovery completed. Found {len(subdomains)} assets.")
+        log_event(scan_id, f"Asset discovery completed. Found {len(subdomains)} assets.")
 
         # Format assets for backend
         assets = [
@@ -110,30 +138,40 @@ def discovery_task(self, target: str, scan_id: str):
 
     except Exception as e:
         logger.error(f"Discovery failed for {target}: {e}", exc_info=True)
-        log_event(scan_id, f"Discovery failed: {str(e)}", "error")
+        log_event(scan_id, f"Asset discovery failed: {str(e)}", "error")
         raise
 
 
 @app.task(name='src.tasks.schedule_asset_scans', queue='discovery')
 def schedule_asset_scans(assets: list, scan_id: str, scan_config: Dict[str, Any] = None):
     """
-    Step 2: Dynamic scheduling of per-asset scans.
-    Creates parallel task chains based on scan depth configuration.
-
-    Workflow per asset:
-    - Fast mode: port_scan -> tech_detect -> vuln_scan_prioritized
-    - Deep mode: port_scan -> tech_detect -> vuln_scan_prioritized -> vuln_scan_full
+    Phase-based scheduling of per-asset scans.
+    Creates parallel task chains based on phases configuration.
+    Supports delta scanning - skips recently scanned assets.
     """
     scan_config = scan_config or {}
-    scan_depth = scan_config.get("scan_depth", "fast")
+    phases = scan_config.get("phases", ["asset_discovery", "service_enumeration", "tech_detection", "vuln_assessment"])
+    is_delta_scan = scan_config.get("is_delta_scan", False)
+    delta_threshold_hours = scan_config.get("delta_threshold_hours", 24)
 
-    logger.info(f"Scheduling scans for {len(assets)} assets (depth: {scan_depth})...")
-    log_event(scan_id, f"Scheduling scans for {len(assets)} assets ({scan_depth} mode).")
+    logger.info(f"Scheduling scans for {len(assets)} assets (phases: {phases})...")
 
     if not assets:
         logger.warning(f"No assets found for scan {scan_id}, finalizing immediately")
         finalize_scan.delay([], scan_id)
         return
+
+    # Delta scanning: filter out recently scanned assets
+    if is_delta_scan:
+        assets, skipped_count = _filter_stale_assets(assets, scan_id, delta_threshold_hours)
+        if skipped_count > 0:
+            log_event(scan_id, f"Delta mode: scanning {len(assets)} assets, skipped {skipped_count} recently scanned")
+        if not assets:
+            log_event(scan_id, "No stale assets to scan in delta mode")
+            finalize_scan.delay([], scan_id)
+            return
+
+    log_event(scan_id, f"Scheduling scans for {len(assets)} assets")
 
     from src.tasks.scan import (
         port_scan_task,
@@ -143,29 +181,61 @@ def schedule_asset_scans(assets: list, scan_id: str, scan_config: Dict[str, Any]
     )
 
     def build_asset_chain(asset: Dict[str, Any]):
-        """Build the scan chain for a single asset based on scan depth."""
-        if scan_depth == "deep":
-            # Deep mode: port -> tech -> vuln_prioritized -> vuln_full
-            return chain(
-                port_scan_task.s(asset, scan_id, scan_config),
-                tech_detect_task.s(scan_id, scan_config),
-                vuln_scan_prioritized_task.s(scan_id, scan_config),
-                vuln_scan_full_task.s(scan_id, scan_config)
-            )
-        else:
-            # Fast mode: port -> tech -> vuln_prioritized (no full scan)
-            return chain(
-                port_scan_task.s(asset, scan_id, scan_config),
-                tech_detect_task.s(scan_id, scan_config),
-                vuln_scan_prioritized_task.s(scan_id, scan_config)
-            )
+        """Build the scan chain for a single asset based on phases."""
+        chain_tasks = []
+
+        # Phase 2: Service Enumeration
+        if "service_enumeration" in phases:
+            chain_tasks.append(port_scan_task.s(asset, scan_id, scan_config))
+
+        # Phase 3: Tech Detection
+        if "tech_detection" in phases:
+            if chain_tasks:
+                chain_tasks.append(tech_detect_task.s(scan_id, scan_config))
+            else:
+                chain_tasks.append(tech_detect_task.s(asset, scan_id, scan_config))
+
+        # Phase 4: Vulnerability Assessment
+        if "vuln_assessment" in phases:
+            if chain_tasks:
+                chain_tasks.append(vuln_scan_prioritized_task.s(scan_id, scan_config))
+            else:
+                chain_tasks.append(vuln_scan_prioritized_task.s(asset, scan_id, scan_config))
+
+        # Phase 5: Deep Analysis
+        if "deep_analysis" in phases:
+            if chain_tasks:
+                chain_tasks.append(vuln_scan_full_task.s(scan_id, scan_config))
+            else:
+                chain_tasks.append(vuln_scan_full_task.s(asset, scan_id, scan_config))
+
+        if chain_tasks:
+            return chain(*chain_tasks)
+        return None
 
     # Create parallel task chains for all assets
-    tasks_group = [build_asset_chain(asset) for asset in assets]
+    task_chains = [c for c in (build_asset_chain(asset) for asset in assets) if c]
 
-    # Use chord to run all chains in parallel, then finalize
-    callback = finalize_scan.s(scan_id)
-    chord(group(tasks_group))(callback)
+    if task_chains:
+        # Use chord to run all chains in parallel, then finalize
+        callback = finalize_scan.s(scan_id)
+        chord(group(task_chains))(callback)
+    else:
+        # No tasks to run, just finalize
+        finalize_scan.delay([], scan_id)
+
+
+def _filter_stale_assets(assets: List[Dict], scan_id: str, threshold_hours: int) -> tuple:
+    """
+    Filter assets for delta scanning.
+    Returns (assets_to_scan, skipped_count).
+
+    In a full implementation, this would query the backend for last_scanned_at.
+    For now, we scan all assets (delta optimization will be added later).
+    """
+    # TODO: Implement actual delta scanning by querying backend for last_scanned_at
+    # For now, return all assets
+    return assets, 0
 
 
 @app.task(name='src.tasks.finalize_scan', queue='discovery')

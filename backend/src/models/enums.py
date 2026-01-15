@@ -5,10 +5,40 @@ class ScopeType(str, enum.Enum):
     ip_range = "ip_range"
     hostname = "hostname"
 
-class ScanType(str, enum.Enum):
-    passive = "passive"
-    active = "active"
-    full = "full"
+class ScanProfile(str, enum.Enum):
+    """
+    High-level scan profiles that abstract away complexity.
+    Each profile defines which phases run and at what intensity.
+    """
+    discovery = "discovery"                     # Passive only: find assets
+    quick_assessment = "quick_assessment"       # Discovery + basic vuln scan
+    standard_assessment = "standard_assessment" # Balanced approach (recommended)
+    full_audit = "full_audit"                   # Comprehensive, all templates
+    continuous_monitoring = "continuous_monitoring"  # Delta-based efficient scanning
+
+
+class ScanPhase(str, enum.Enum):
+    """
+    Discrete phases of a scan workflow.
+    Profiles select which phases to execute.
+    """
+    asset_discovery = "asset_discovery"           # Phase 1: Subfinder, passive DNS
+    service_enumeration = "service_enumeration"   # Phase 2: Naabu port scan
+    tech_detection = "tech_detection"             # Phase 3: httpx
+    vuln_assessment = "vuln_assessment"           # Phase 4: Nuclei prioritized
+    deep_analysis = "deep_analysis"               # Phase 5: Full Nuclei + extended passive
+
+
+class AssetCriticality(str, enum.Enum):
+    """
+    Asset importance level - drives scan intensity decisions.
+    """
+    critical = "critical"       # Crown jewels - always deep scan
+    high = "high"               # Important assets - standard+ scans
+    medium = "medium"           # Normal assets - follow profile
+    low = "low"                 # Less important - fast scans only
+    unclassified = "unclassified"  # Not yet classified (default)
+
 
 class ScanStatus(str, enum.Enum):
     pending = "pending"
@@ -42,9 +72,3 @@ class ScanFrequency(str, enum.Enum):
     daily = "daily"
     weekly = "weekly"
     monthly = "monthly"
-
-
-class ScanDepth(str, enum.Enum):
-    """Scan depth mode: fast (80% vulns in 20% time) vs deep (exhaustive)"""
-    fast = "fast"    # Rapide : ports limités, templates ciblées
-    deep = "deep"    # Profond : ports étendus, scan exhaustif

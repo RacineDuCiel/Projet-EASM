@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, RefreshCw, ShieldAlert, Globe, ArrowUpDown, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
+import { getProfileDisplayName } from '@/components/scans/ProfileSelector';
 
 type SortDirection = 'asc' | 'desc';
 type SortKey = 'severity' | 'title' | 'asset';
@@ -130,7 +131,7 @@ export default function ScanDetailsPage() {
                     </h2>
                     <p className="text-muted-foreground text-sm">
                         ID: <span className="font-mono text-xs">{scan.id}</span> •
-                        Type: <span className="capitalize font-medium">{scan.scan_type}</span> •
+                        Profile: <span className="font-medium">{getProfileDisplayName(scan.scan_profile)}</span> •
                         Started: {scan.started_at ? format(new Date(scan.started_at), 'MMM d, yyyy HH:mm:ss') : 'N/A'}
                     </p>
                 </div>

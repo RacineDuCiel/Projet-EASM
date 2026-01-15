@@ -4,7 +4,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from src.db.session import Base
-from .enums import AssetType, Severity, VulnStatus
+from .enums import AssetType, Severity, VulnStatus, AssetCriticality
 
 
 class Asset(Base):
@@ -25,6 +25,11 @@ class Asset(Base):
     is_active = Column(Boolean, default=True)
     first_seen = Column(DateTime(timezone=True), server_default=func.now())
     last_seen = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Criticality and scan tracking
+    criticality = Column(SqlEnum(AssetCriticality), default=AssetCriticality.unclassified, nullable=False)
+    last_scanned_at = Column(DateTime(timezone=True), nullable=True)
+    scan_count = Column(Integer, default=0, nullable=False)
 
     # Relationships - using selectin for eager loading when accessed
     scope = relationship("Scope", back_populates="assets", lazy="selectin")

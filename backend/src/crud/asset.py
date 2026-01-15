@@ -315,3 +315,33 @@ async def update_service_technologies(
 
     logger.info(f"Updated tech detection for {asset_value}:{port} - {len(technologies)} technologies")
     return db_service
+
+
+async def update_asset(
+    db: AsyncSession, asset_id: UUID, asset_update: schemas.AssetUpdate
+) -> models.Asset:
+    """Update asset properties including criticality."""
+    result = await db.execute(
+        select(models.Asset)
+        .where(models.Asset.id == asset_id)
+        .options(
+            selectinload(models.Asset.services),
+            selectinload(models.Asset.vulnerabilities)
+        )
+    )
+    db_asset = result.scalar_one_or_none()
+
+    if not db_asset:
+        return None
+
+    # Update fields if provided
+    update_data = asset_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if value is not None:
+            setattr(db_asset, field, value)
+
+    await db.commit()
+    await db.refresh(db_asset)
+
+    logger.info(f"Updated asset {db_asset.value} with {update_data}")
+    return db_asset

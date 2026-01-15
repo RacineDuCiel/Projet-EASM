@@ -171,13 +171,22 @@ def _report_tech_detection(domain: str, port: int, tech_info: Dict, scan_id: str
 )
 def vuln_scan_prioritized_task(asset: Dict[str, Any], scan_id: str, scan_config: Dict = None) -> Dict[str, Any]:
     """
-    Step 3: Prioritized vulnerability scanning with Nuclei.
+    Phase 4: Prioritized vulnerability scanning with Nuclei.
     Uses detected technologies to run targeted templates first.
+    Controlled by run_prioritized_templates flag.
     """
+    scan_config = scan_config or {}
+
+    # Check if prioritized scanning is enabled
+    if not scan_config.get("run_prioritized_templates", True):
+        logger.info(f"Prioritized vuln scan skipped (disabled in profile)")
+        asset["seen_titles"] = []
+        asset["vuln_count_prioritized"] = 0
+        return asset
+
     domain = asset["value"]
     services = asset.get("services", [])
     detected_techs = asset.get("detected_technologies", [])
-    scan_config = scan_config or {}
 
     logger.info(f"Starting prioritized vuln scan for {domain}")
     log_event(scan_id, f"Starting vulnerability scan on {domain}...")
@@ -249,14 +258,15 @@ def vuln_scan_prioritized_task(asset: Dict[str, Any], scan_id: str, scan_config:
 )
 def vuln_scan_full_task(asset: Dict[str, Any], scan_id: str, scan_config: Dict = None) -> Dict[str, Any]:
     """
-    Step 4: Full vulnerability scanning (DEEP MODE ONLY).
+    Phase 5: Full vulnerability scanning (deep_analysis phase).
     Runs all Nuclei templates without tag filtering.
     Skips vulnerabilities already found in prioritized scan.
+    Controlled by run_full_templates flag.
     """
     scan_config = scan_config or {}
 
-    if not scan_config.get("enable_full_vuln_scan", False):
-        logger.info(f"Full vuln scan skipped (not in deep mode)")
+    if not scan_config.get("run_full_templates", False):
+        logger.info(f"Full vuln scan skipped (not enabled in profile)")
         return asset
 
     domain = asset["value"]

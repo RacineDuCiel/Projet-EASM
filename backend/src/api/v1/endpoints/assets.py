@@ -47,13 +47,32 @@ async def read_asset(
     asset = await crud.get_asset(db, asset_id)
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
-    
+
     # Check permissions
     if current_user.role != "admin":
-        # Check if asset belongs to user's program
-        # This is a bit indirect, we check if asset -> scope -> program matches
-        # Ideally we should do this in the query, but for now:
         if asset.scope.program_id != current_user.program_id:
-             raise HTTPException(status_code=403, detail="Not authorized to view this asset")
-             
+            raise HTTPException(status_code=403, detail="Not authorized to view this asset")
+
     return asset
+
+
+@router.patch("/{asset_id}", response_model=schemas.Asset)
+async def update_asset(
+    asset_id: UUID,
+    asset_update: schemas.AssetUpdate,
+    db: AsyncSession = Depends(database.get_db),
+    current_user: User = Depends(auth.get_current_user)
+):
+    """Update asset properties including criticality."""
+    asset = await crud.get_asset(db, asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    # Check permissions
+    if current_user.role != "admin":
+        if asset.scope.program_id != current_user.program_id:
+            raise HTTPException(status_code=403, detail="Not authorized to update this asset")
+
+    # Update asset
+    updated_asset = await crud.update_asset(db, asset_id, asset_update)
+    return updated_asset

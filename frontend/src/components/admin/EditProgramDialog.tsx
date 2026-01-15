@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import api from "@/lib/api";
-import type { Program, ScanDepth } from "@/types";
+import type { Program, ScanProfile } from "@/types";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -17,12 +17,21 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search, Zap, BarChart3, ShieldCheck, RefreshCw } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+
+const SCAN_PROFILES: { value: ScanProfile; label: string; description: string; icon: typeof Search }[] = [
+    { value: 'discovery', label: 'Discovery', description: 'Passive reconnaissance only', icon: Search },
+    { value: 'quick_assessment', label: 'Quick Assessment', description: 'Fast scan with prioritized templates', icon: Zap },
+    { value: 'standard_assessment', label: 'Standard Assessment', description: 'Balanced approach (recommended)', icon: BarChart3 },
+    { value: 'full_audit', label: 'Full Audit', description: 'Comprehensive scan with all templates', icon: ShieldCheck },
+    { value: 'continuous_monitoring', label: 'Continuous Monitoring', description: 'Delta-based efficient scanning', icon: RefreshCw },
+];
 
 const programSchema = z.object({
     name: z.string().min(2, "Name must be at least 2 characters"),
-    scan_depth: z.enum(["fast", "deep"]),
+    default_scan_profile: z.enum(["discovery", "quick_assessment", "standard_assessment", "full_audit", "continuous_monitoring"]),
+    delta_scan_threshold_hours: z.coerce.number().int().positive().optional().or(z.literal("")),
     custom_ports: z.string().optional(),
     nuclei_rate_limit: z.coerce.number().int().positive().optional().or(z.literal("")),
     nuclei_timeout: z.coerce.number().int().positive().optional().or(z.literal("")),
@@ -39,24 +48,26 @@ interface EditProgramDialogProps {
 export function EditProgramDialog({ program, open, onOpenChange }: EditProgramDialogProps) {
     const { toast } = useToast();
     const queryClient = useQueryClient();
-    const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<ProgramFormValues>({
+    const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<ProgramFormValues>({
         resolver: zodResolver(programSchema),
         defaultValues: {
             name: "",
-            scan_depth: "fast",
+            default_scan_profile: "standard_assessment",
+            delta_scan_threshold_hours: "",
             custom_ports: "",
             nuclei_rate_limit: "",
             nuclei_timeout: "",
         }
     });
 
-    const scanDepth = watch("scan_depth");
+    const selectedProfile = watch("default_scan_profile");
 
     useEffect(() => {
         if (program) {
             reset({
                 name: program.name,
-                scan_depth: program.scan_depth || "fast",
+                default_scan_profile: program.default_scan_profile || "standard_assessment",
+                delta_scan_threshold_hours: program.delta_scan_threshold_hours || "",
                 custom_ports: program.custom_ports || "",
                 nuclei_rate_limit: program.nuclei_rate_limit || "",
                 nuclei_timeout: program.nuclei_timeout || "",
@@ -87,6 +98,7 @@ export function EditProgramDialog({ program, open, onOpenChange }: EditProgramDi
         // Clean up empty values before sending
         const cleanData = {
             ...data,
+            delta_scan_threshold_hours: data.delta_scan_threshold_hours || null,
             custom_ports: data.custom_ports || null,
             nuclei_rate_limit: data.nuclei_rate_limit || null,
             nuclei_timeout: data.nuclei_timeout || null,
@@ -119,31 +131,55 @@ export function EditProgramDialog({ program, open, onOpenChange }: EditProgramDi
                         </div>
                     </div>
 
-                    {/* Scan Depth */}
+                    {/* Default Scan Profile */}
                     <div className="grid grid-cols-4 items-center gap-4">
                         <Label className="text-right">
-                            Default Depth
+                            Default Profile
                         </Label>
                         <div className="col-span-3">
                             <Select
-                                value={scanDepth}
-                                onValueChange={(v) => setValue("scan_depth", v as "fast" | "deep")}
+                                value={selectedProfile}
+                                onValueChange={(v) => setValue("default_scan_profile", v as ScanProfile)}
                             >
                                 <SelectTrigger>
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="fast">Fast (Recommended)</SelectItem>
-                                    <SelectItem value="deep">Deep (Exhaustive)</SelectItem>
+                                    {SCAN_PROFILES.map(({ value, label, icon: Icon }) => (
+                                        <SelectItem key={value} value={value}>
+                                            <div className="flex items-center gap-2">
+                                                <Icon className="h-4 w-4 text-muted-foreground" />
+                                                <span>{label}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground mt-1">
-                                {scanDepth === 'fast'
-                                    ? 'Targeted scan with technology-based prioritization'
-                                    : 'Full scan with all Nuclei templates'}
+                                {SCAN_PROFILES.find(p => p.value === selectedProfile)?.description}
                             </p>
                         </div>
                     </div>
+
+                    {/* Delta Scan Threshold (only for continuous_monitoring) */}
+                    {selectedProfile === 'continuous_monitoring' && (
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="delta_scan_threshold_hours" className="text-right">
+                                Delta Threshold
+                            </Label>
+                            <div className="col-span-3">
+                                <Input
+                                    id="delta_scan_threshold_hours"
+                                    type="number"
+                                    placeholder="24"
+                                    {...register("delta_scan_threshold_hours")}
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Hours before an asset is considered stale (default: 24h)
+                                </p>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Custom Ports */}
                     <div className="grid grid-cols-4 items-center gap-4">
@@ -157,7 +193,7 @@ export function EditProgramDialog({ program, open, onOpenChange }: EditProgramDi
                                 {...register("custom_ports")}
                             />
                             <p className="text-xs text-muted-foreground mt-1">
-                                Leave empty to use default ports based on scan depth
+                                Leave empty to use default ports based on profile
                             </p>
                         </div>
                     </div>
@@ -171,7 +207,7 @@ export function EditProgramDialog({ program, open, onOpenChange }: EditProgramDi
                             <Input
                                 id="nuclei_rate_limit"
                                 type="number"
-                                placeholder={scanDepth === 'fast' ? '300' : '100'}
+                                placeholder={selectedProfile === 'full_audit' ? '100' : '150'}
                                 {...register("nuclei_rate_limit")}
                             />
                             <p className="text-xs text-muted-foreground mt-1">
@@ -189,7 +225,7 @@ export function EditProgramDialog({ program, open, onOpenChange }: EditProgramDi
                             <Input
                                 id="nuclei_timeout"
                                 type="number"
-                                placeholder={scanDepth === 'fast' ? '5' : '10'}
+                                placeholder={selectedProfile === 'full_audit' ? '10' : '5'}
                                 {...register("nuclei_timeout")}
                             />
                             <p className="text-xs text-muted-foreground mt-1">

@@ -164,10 +164,19 @@ async def read_scan_events(scan_id: UUID, db: AsyncSession = Depends(database.ge
     return scan.events
 
 
+@router.get("/profiles", response_model=List[schemas.ScanProfileInfo])
+async def get_scan_profiles():
+    """
+    Return available scan profiles with their descriptions.
+    Used by frontend to display profile selection UI.
+    """
+    return ScanService.get_available_profiles()
+
+
 @router.get("/", response_model=List[schemas.Scan])
 async def read_scans(
-    skip: int = 0, 
-    limit: int = 100, 
+    skip: int = 0,
+    limit: int = 100,
     db: AsyncSession = Depends(database.get_db),
     current_user: User = Depends(auth.get_current_user)
 ):

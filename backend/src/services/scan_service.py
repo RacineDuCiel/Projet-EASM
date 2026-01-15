@@ -5,7 +5,7 @@ Handles scan lifecycle management, Celery task orchestration, and scheduled scan
 """
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List, Dict, Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -14,62 +14,69 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src import crud, schemas, models
 from src.core.celery_utils import celery_app
 from src.models import Scan, ScanEvent
-from src.models.enums import ScanStatus, ScanFrequency, ScanDepth
+from src.models.enums import ScanStatus, ScanFrequency, ScanProfile
+from src.services.profile_config import build_profile_config, get_all_profiles_info
 
 
 logger = logging.getLogger(__name__)
 
 
 class ScanService:
-    # Scan depth configuration defaults
-    FAST_PORTS = "80,443,8080,8443"
-    FAST_RATE_LIMIT = 300
-    FAST_TIMEOUT = 5
-    FAST_RETRIES = 1
-
-    DEEP_PORTS = "21,22,23,25,53,80,110,111,135,139,143,443,445,993,995,1723,3306,3389,5432,5900,8000-8010,8080-8090,8443,9000-9010"
-    DEEP_RATE_LIMIT = 100
-    DEEP_TIMEOUT = 10
-    DEEP_RETRIES = 3
 
     @staticmethod
-    def _build_scan_config(scan_depth: ScanDepth, program: models.Program, scan_id: str, target: str, specific_port: int = None) -> dict:
-        """Build scan configuration based on depth and program settings.
+    def _build_scan_config(
+        profile: ScanProfile,
+        program: models.Program,
+        scan_id: str,
+        target: str,
+        specific_port: int = None
+    ) -> Dict[str, Any]:
+        """Build scan configuration based on profile and program settings.
 
         Args:
-            scan_depth: Fast or deep scan mode
-            program: Program with scan configuration
+            profile: Scan profile to use
+            program: Program with scan configuration overrides
             scan_id: UUID of the scan
             target: Target domain/IP
             specific_port: If provided, scan only this port (skip discovery)
         """
-        if scan_depth == ScanDepth.fast:
-            ports = program.custom_ports or ScanService.FAST_PORTS
-            rate_limit = program.nuclei_rate_limit or ScanService.FAST_RATE_LIMIT
-            timeout = program.nuclei_timeout or ScanService.FAST_TIMEOUT
-            retries = ScanService.FAST_RETRIES
-            enable_full_vuln_scan = False
-        else:  # deep
-            ports = program.custom_ports or ScanService.DEEP_PORTS
-            rate_limit = program.nuclei_rate_limit or ScanService.DEEP_RATE_LIMIT
-            timeout = program.nuclei_timeout or ScanService.DEEP_TIMEOUT
-            retries = ScanService.DEEP_RETRIES
-            enable_full_vuln_scan = True
+        # Get program overrides
+        program_overrides = {
+            "custom_ports": program.custom_ports,
+            "nuclei_rate_limit": program.nuclei_rate_limit,
+            "nuclei_timeout": program.nuclei_timeout,
+        }
+
+        # Build profile config with program overrides
+        config = build_profile_config(profile, program_overrides)
 
         # If a specific port is provided, use it instead of port discovery
-        if specific_port:
-            ports = str(specific_port)
+        ports = str(specific_port) if specific_port else config.ports
 
         return {
             "scan_id": scan_id,
             "target": target,
-            "scan_depth": scan_depth.value,
+            "scan_profile": profile.value,
+            "phases": [p.value for p in config.phases],
             "ports": ports,
-            "specific_port": specific_port,  # Pass to workers to skip discovery
-            "nuclei_rate_limit": rate_limit,
-            "nuclei_timeout": timeout,
-            "nuclei_retries": retries,
-            "enable_full_vuln_scan": enable_full_vuln_scan
+            "specific_port": specific_port,
+            "nuclei_rate_limit": config.nuclei_rate_limit,
+            "nuclei_timeout": config.nuclei_timeout,
+            "nuclei_retries": config.nuclei_retries,
+            "run_prioritized_templates": config.run_prioritized_templates,
+            "run_full_templates": config.run_full_templates,
+            "passive_recon_enabled": config.passive_recon_enabled,
+            "passive_extended_enabled": config.passive_extended_enabled,
+            "is_delta_scan": config.is_delta_scan,
+            "delta_threshold_hours": config.delta_threshold_hours or program.delta_scan_threshold_hours,
+            "enable_api_integrations": config.enable_api_integrations,
+            # API keys from program
+            "api_keys": {
+                "shodan_key": program.shodan_api_key,
+                "securitytrails_key": program.securitytrails_api_key,
+                "censys_id": program.censys_api_id,
+                "censys_secret": program.censys_api_secret,
+            }
         }
 
     @staticmethod
@@ -89,11 +96,11 @@ class ScanService:
 
         # 4. Build scan configuration (pass specific port if defined in scope)
         scan_config = ScanService._build_scan_config(
-            scan_in.scan_depth,
+            scan_in.scan_profile,
             program,
             str(db_scan.id),
             scope.value,
-            specific_port=scope.port  # May be None for domains
+            specific_port=scope.port
         )
 
         # 5. Trigger Celery task with configuration
@@ -104,7 +111,7 @@ class ScanService:
             queue='discovery'
         )
 
-        logger.info(f"Created scan {db_scan.id} with depth={scan_in.scan_depth.value}")
+        logger.info(f"Created scan {db_scan.id} with profile={scan_in.scan_profile.value}")
         return db_scan
 
     @staticmethod
@@ -124,15 +131,20 @@ class ScanService:
         return await crud.update_scan_status(db, scan_id, status)
 
     @staticmethod
+    def get_available_profiles() -> List[Dict[str, Any]]:
+        """Return list of available profiles with their descriptions."""
+        return get_all_profiles_info()
+
+    @staticmethod
     async def check_scheduled_scans(db: AsyncSession) -> List[UUID]:
         """Check and trigger scheduled scans based on program frequency settings."""
         programs = await crud.get_scheduled_programs(db)
         triggered_scans: List[UUID] = []
-        
+
         for program in programs:
             frequency = program.scan_frequency
             delta = None
-            
+
             if frequency == ScanFrequency.daily:
                 delta = timedelta(days=1)
             elif frequency == ScanFrequency.weekly:
@@ -141,10 +153,10 @@ class ScanService:
                 delta = timedelta(days=30)
             else:
                 continue
-                
+
             for scope in program.scopes:
                 latest_scan = await crud.get_latest_scan_for_scope(db, scope.id)
-                
+
                 should_scan = False
                 if not latest_scan:
                     should_scan = True
@@ -153,21 +165,20 @@ class ScanService:
                     last_scan_time = latest_scan.started_at
                     if last_scan_time.tzinfo is None:
                         last_scan_time = last_scan_time.replace(tzinfo=timezone.utc)
-                        
+
                     if now - last_scan_time > delta:
                         should_scan = True
-                
+
                 if should_scan:
+                    # Use continuous_monitoring for scheduled scans (delta scanning)
                     scan_in = schemas.ScanCreate(
                         scope_id=scope.id,
-                        scan_type="passive",
-                        scan_depth=program.scan_depth  # Use program's configured scan depth
+                        scan_profile=ScanProfile.continuous_monitoring
                     )
                     new_scan = await ScanService.create_scan(db, scan_in)
                     if new_scan:
                         triggered_scans.append(new_scan.id)
-                        
-                        
+
         return triggered_scans
 
     @staticmethod
@@ -202,7 +213,7 @@ class ScanService:
                 if program:
                     # Build scan configuration
                     scan_config = ScanService._build_scan_config(
-                        scan.scan_depth,
+                        scan.scan_profile,
                         program,
                         str(scan.id),
                         scan.scope.value,
@@ -237,66 +248,46 @@ class ScanService:
         """
         Stops a running scan by revoking its Celery tasks and updating DB status.
         """
-        from src.models import Scan, ScanEvent
-        from src.models.enums import ScanStatus
-        import logging
-        
-        logger = logging.getLogger(__name__)
-        
         scan = await crud.get_scan(db, scan_id)
         if not scan:
             return None
-            
+
         if scan.status not in [ScanStatus.running, ScanStatus.pending]:
             return scan
-            
+
         # 1. Revoke Celery Tasks
-        # We need to find active tasks for this scan_id.
-        # This is tricky because we don't store the celery task ID in the DB (we could, but we don't right now).
-        # However, we can inspect active tasks and match the args.
-        
         i = celery_app.control.inspect()
         active = i.active()
         reserved = i.reserved()
-        
+
         tasks_to_revoke = []
-        
+
         def find_tasks(worker_tasks):
-            if not worker_tasks: return
+            if not worker_tasks:
+                return
             for worker, tasks in worker_tasks.items():
                 for task in tasks:
-                    # Check args. Our tasks usually have scan_id as the 2nd arg (discovery) or passed in kwargs?
-                    # discovery_task(target, scan_id)
-                    # run_scan(target, scan_id)
-                    # port_scan_task(asset, scan_id)
-                    # vuln_scan_task(asset, scan_id)
-                    
-                    # Args are usually a list.
                     args = task.get('args', [])
-                    # kwargs = task.get('kwargs', {})
-                    
-                    # Check if scan_id is in args
                     if str(scan_id) in [str(arg) for arg in args]:
                         tasks_to_revoke.append(task['id'])
-        
+
         find_tasks(active)
         find_tasks(reserved)
-        
+
         if tasks_to_revoke:
             celery_app.control.revoke(tasks_to_revoke, terminate=True)
             logger.info(f"Revoked {len(tasks_to_revoke)} tasks for scan {scan_id}")
-            
+
         # 2. Update DB
         scan.status = ScanStatus.stopped
-        from datetime import datetime, timezone
         scan.completed_at = datetime.now(timezone.utc)
-        
+
         db.add(ScanEvent(
             scan_id=scan.id,
             message="Scan manually stopped by user.",
             severity="warning"
         ))
-        
+
         await db.commit()
         await db.refresh(scan)
         return scan

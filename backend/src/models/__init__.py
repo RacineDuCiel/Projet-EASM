@@ -1,4 +1,15 @@
-from .enums import ScopeType, ScanType, ScanStatus, AssetType, Severity, VulnStatus, UserRole, ScanDepth
+from .enums import (
+    ScopeType,
+    ScanProfile,
+    ScanPhase,
+    ScanStatus,
+    AssetType,
+    AssetCriticality,
+    Severity,
+    VulnStatus,
+    UserRole,
+    ScanFrequency,
+)
 from .program import Program, Scope
 from .scan import Scan, ScanEvent
 from .asset import Asset, Service, Vulnerability

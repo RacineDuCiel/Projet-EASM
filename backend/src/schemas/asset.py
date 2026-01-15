@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
-from src.models.enums import AssetType, Severity, VulnStatus
+from src.models.enums import AssetType, AssetCriticality, Severity, VulnStatus
 
 class ServiceBase(BaseModel):
     port: int
@@ -81,15 +81,29 @@ class AssetBase(BaseModel):
     asset_type: AssetType
     is_active: bool
 
+
 class AssetCreate(AssetBase):
     services: List[ServiceCreate] = []
     vulnerabilities: List[VulnerabilityCreate] = []
+
+
+class AssetUpdate(BaseModel):
+    """For updating asset properties including criticality."""
+    is_active: Optional[bool] = None
+    criticality: Optional[AssetCriticality] = None
+
 
 class Asset(AssetBase):
     id: UUID
     scope_id: UUID
     first_seen: datetime
     last_seen: datetime
+
+    # Criticality and scan tracking
+    criticality: AssetCriticality = AssetCriticality.unclassified
+    last_scanned_at: Optional[datetime] = None
+    scan_count: int = 0
+
     services: List[Service] = []
     vulnerabilities: List[Vulnerability] = []
 

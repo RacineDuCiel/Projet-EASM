@@ -4,7 +4,8 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from src.db.session import Base
-from .enums import ScopeType, ScanFrequency, ScanDepth
+from .enums import ScopeType, ScanFrequency, ScanProfile
+
 
 class Program(Base):
     __tablename__ = "programs"
@@ -16,10 +17,11 @@ class Program(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Scan configuration fields
-    scan_depth = Column(SqlEnum(ScanDepth), default=ScanDepth.fast, nullable=False)
+    default_scan_profile = Column(SqlEnum(ScanProfile), default=ScanProfile.standard_assessment, nullable=False)
     custom_ports = Column(String, nullable=True)  # Custom ports override, e.g., "80,443,8080-8090"
     nuclei_rate_limit = Column(Integer, nullable=True)  # Override default Nuclei rate limit
     nuclei_timeout = Column(Integer, nullable=True)  # Override default Nuclei timeout (seconds)
+    delta_scan_threshold_hours = Column(Integer, default=24, nullable=False)  # For continuous monitoring
 
     # Passive Recon configuration
     passive_recon_enabled = Column(Boolean, default=True, nullable=False)
