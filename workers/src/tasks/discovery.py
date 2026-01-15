@@ -17,6 +17,7 @@ def run_scan(target: str, scan_id: str, scan_config: Dict[str, Any] = None):
     """
     Main entry point for scan orchestration.
     Launches the discovery workflow chain with scan configuration.
+    Now includes passive reconnaissance in parallel with subdomain discovery.
 
     Args:
         target: Domain/IP to scan
@@ -28,9 +29,12 @@ def run_scan(target: str, scan_id: str, scan_config: Dict[str, Any] = None):
             - nuclei_timeout: Timeout for Nuclei
             - nuclei_retries: Retry count
             - enable_full_vuln_scan: Whether to run full scan (deep mode only)
+            - passive_recon_enabled: Whether to run passive recon (default: True)
+            - api_keys: Dict of API keys for passive recon
     """
     scan_config = scan_config or {}
     scan_depth = scan_config.get("scan_depth", "fast")
+    passive_recon_enabled = scan_config.get("passive_recon_enabled", True)
 
     logger.info(f"Starting scan orchestration for {target} (ID: {scan_id}, depth: {scan_depth})")
 
@@ -43,16 +47,23 @@ def run_scan(target: str, scan_id: str, scan_config: Dict[str, Any] = None):
 
     # Log scan start with mode info
     mode_desc = "Fast (prioritized)" if scan_depth == "fast" else "Deep (comprehensive)"
-    log_event(scan_id, f"Scan started in {mode_desc} mode")
+    passive_desc = " + Passive Recon" if passive_recon_enabled else ""
+    log_event(scan_id, f"Scan started in {mode_desc} mode{passive_desc}")
 
-    # Build workflow: discovery -> schedule_asset_scans (which handles the rest)
+    # Launch passive recon in parallel (fire and forget, doesn't block main workflow)
+    if passive_recon_enabled:
+        from src.tasks.passive_recon import passive_recon_orchestrator
+        passive_recon_orchestrator.delay(target, scan_id, scan_config)
+        logger.info(f"Passive recon launched for {target}")
+
+    # Build main workflow: discovery -> schedule_asset_scans (which handles the rest)
     workflow = chain(
         discovery_task.s(target, scan_id),
         schedule_asset_scans.s(scan_id, scan_config)
     )
     workflow.apply_async()
 
-    return {"status": "started", "scan_id": scan_id, "depth": scan_depth}
+    return {"status": "started", "scan_id": scan_id, "depth": scan_depth, "passive_recon": passive_recon_enabled}
 
 
 @app.task(

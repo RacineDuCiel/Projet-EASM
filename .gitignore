@@ -44,6 +44,7 @@ redis_data/
 *.swp
 *.swo
 .agent/
+CLAUDE.md
 
 # Logs
 *.log

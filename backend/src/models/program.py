@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, Enum as SqlEnum
+from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, Boolean, Enum as SqlEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -20,6 +20,18 @@ class Program(Base):
     custom_ports = Column(String, nullable=True)  # Custom ports override, e.g., "80,443,8080-8090"
     nuclei_rate_limit = Column(Integer, nullable=True)  # Override default Nuclei rate limit
     nuclei_timeout = Column(Integer, nullable=True)  # Override default Nuclei timeout (seconds)
+
+    # Passive Recon configuration
+    passive_recon_enabled = Column(Boolean, default=True, nullable=False)
+    enable_web_archive = Column(Boolean, default=True, nullable=False)
+    enable_url_aggregation = Column(Boolean, default=True, nullable=False)
+    enable_crawling = Column(Boolean, default=True, nullable=False)
+
+    # External API keys (per-program, optional - falls back to global config)
+    shodan_api_key = Column(String, nullable=True)
+    securitytrails_api_key = Column(String, nullable=True)
+    censys_api_id = Column(String, nullable=True)
+    censys_api_secret = Column(String, nullable=True)
 
     scopes = relationship("Scope", back_populates="program", cascade="all, delete-orphan", lazy="selectin")
 

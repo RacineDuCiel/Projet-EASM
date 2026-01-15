@@ -1,3 +1,9 @@
 celery==5.3.4
 redis==5.0.1
 requests==2.31.0
+
+# Passive Reconnaissance
+python-whois==0.9.4
+censys==2.2.14
+shodan==1.31.0
+mmh3==4.1.0

@@ -15,21 +15,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Subfinder
 RUN wget -q https://github.com/projectdiscovery/subfinder/releases/download/v2.6.6/subfinder_2.6.6_linux_amd64.zip \
-    && unzip subfinder_2.6.6_linux_amd64.zip \
+    && unzip -o subfinder_2.6.6_linux_amd64.zip \
     && mv subfinder /usr/local/bin/ \
     && rm subfinder_2.6.6_linux_amd64.zip \
     && chmod +x /usr/local/bin/subfinder
 
 # Naabu
 RUN wget -q https://github.com/projectdiscovery/naabu/releases/download/v2.3.1/naabu_2.3.1_linux_amd64.zip \
-    && unzip naabu_2.3.1_linux_amd64.zip \
+    && unzip -o naabu_2.3.1_linux_amd64.zip \
     && mv naabu /usr/local/bin/ \
     && rm naabu_2.3.1_linux_amd64.zip \
     && chmod +x /usr/local/bin/naabu
 
 # Nuclei
 RUN wget -q https://github.com/projectdiscovery/nuclei/releases/download/v3.2.9/nuclei_3.2.9_linux_amd64.zip \
-    && unzip nuclei_3.2.9_linux_amd64.zip \
+    && unzip -o nuclei_3.2.9_linux_amd64.zip \
     && mv nuclei /usr/local/bin/ \
     && rm nuclei_3.2.9_linux_amd64.zip \
     && chmod +x /usr/local/bin/nuclei
@@ -40,6 +40,41 @@ RUN wget -q https://github.com/projectdiscovery/httpx/releases/download/v1.6.8/h
     && mv httpx /usr/local/bin/ \
     && rm httpx_1.6.8_linux_amd64.zip \
     && chmod +x /usr/local/bin/httpx
+
+# dnsx (DNS enumeration)
+RUN wget -q https://github.com/projectdiscovery/dnsx/releases/download/v1.2.1/dnsx_1.2.1_linux_amd64.zip \
+    && unzip -o dnsx_1.2.1_linux_amd64.zip \
+    && mv dnsx /usr/local/bin/ \
+    && rm dnsx_1.2.1_linux_amd64.zip \
+    && chmod +x /usr/local/bin/dnsx
+
+# tlsx (TLS/SSL analysis)
+RUN wget -q https://github.com/projectdiscovery/tlsx/releases/download/v1.1.6/tlsx_1.1.6_linux_amd64.zip \
+    && unzip -o tlsx_1.1.6_linux_amd64.zip \
+    && mv tlsx /usr/local/bin/ \
+    && rm tlsx_1.1.6_linux_amd64.zip \
+    && chmod +x /usr/local/bin/tlsx
+
+# katana (Web crawler)
+RUN wget -q https://github.com/projectdiscovery/katana/releases/download/v1.1.0/katana_1.1.0_linux_amd64.zip \
+    && unzip -o katana_1.1.0_linux_amd64.zip \
+    && mv katana /usr/local/bin/ \
+    && rm katana_1.1.0_linux_amd64.zip \
+    && chmod +x /usr/local/bin/katana
+
+# waybackurls (Web Archive URLs)
+RUN wget -q https://github.com/tomnomnom/waybackurls/releases/download/v0.1.0/waybackurls-linux-amd64-0.1.0.tgz \
+    && tar -xzf waybackurls-linux-amd64-0.1.0.tgz \
+    && mv waybackurls /usr/local/bin/ \
+    && rm waybackurls-linux-amd64-0.1.0.tgz \
+    && chmod +x /usr/local/bin/waybackurls
+
+# gau (GetAllUrls)
+RUN wget -q https://github.com/lc/gau/releases/download/v2.2.3/gau_2.2.3_linux_amd64.tar.gz \
+    && tar -xzf gau_2.2.3_linux_amd64.tar.gz \
+    && mv gau /usr/local/bin/ \
+    && rm gau_2.2.3_linux_amd64.tar.gz \
+    && chmod +x /usr/local/bin/gau
 
 # Update Nuclei Templates
 RUN nuclei -update-templates
@@ -78,6 +113,11 @@ COPY --from=tools-installer /usr/local/bin/subfinder /usr/local/bin/
 COPY --from=tools-installer /usr/local/bin/naabu /usr/local/bin/
 COPY --from=tools-installer /usr/local/bin/nuclei /usr/local/bin/
 COPY --from=tools-installer /usr/local/bin/httpx /usr/local/bin/
+COPY --from=tools-installer /usr/local/bin/dnsx /usr/local/bin/
+COPY --from=tools-installer /usr/local/bin/tlsx /usr/local/bin/
+COPY --from=tools-installer /usr/local/bin/katana /usr/local/bin/
+COPY --from=tools-installer /usr/local/bin/waybackurls /usr/local/bin/
+COPY --from=tools-installer /usr/local/bin/gau /usr/local/bin/
 
 # Copy nuclei templates
 COPY --from=tools-installer /root/nuclei-templates /root/nuclei-templates

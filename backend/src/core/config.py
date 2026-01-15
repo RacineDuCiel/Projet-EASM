@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     # Scan Configuration
     SCAN_PORTS: str = "80,443,3000-3010,4200,5000-5010,8000-8010,8080-8090"
     HTTP_TIMEOUT: int = 30
+
+    # Global API Keys for Passive Reconnaissance (optional, per-program keys take precedence)
+    SHODAN_API_KEY: Optional[str] = None
+    SECURITYTRAILS_API_KEY: Optional[str] = None
+    CENSYS_API_ID: Optional[str] = None
+    CENSYS_API_SECRET: Optional[str] = None
+    HACKERTARGET_API_KEY: Optional[str] = None  # Optional - free tier works without key
+
+    # Passive Recon Configuration
+    PASSIVE_RECON_TIMEOUT: int = 120  # Global timeout for passive recon tools
+    ENABLE_PASSIVE_RECON: bool = True  # Global toggle for passive recon
     
     @field_validator("SECRET_KEY")
     @classmethod

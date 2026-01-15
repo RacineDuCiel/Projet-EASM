@@ -31,6 +31,18 @@ class Asset(Base):
     services = relationship("Service", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
     vulnerabilities = relationship("Vulnerability", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
 
+    # Passive Intelligence relationships
+    dns_records = relationship("DNSRecord", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
+    whois_record = relationship("WHOISRecord", back_populates="asset", uselist=False, cascade="all, delete-orphan", lazy="selectin")
+    certificates = relationship("Certificate", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
+    asn_info = relationship("ASNInfo", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
+    historical_urls = relationship("HistoricalURL", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
+    security_headers = relationship("SecurityHeader", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
+    favicon_hash = relationship("FaviconHash", back_populates="asset", uselist=False, cascade="all, delete-orphan", lazy="selectin")
+    shodan_data = relationship("ShodanData", back_populates="asset", uselist=False, cascade="all, delete-orphan", lazy="selectin")
+    crawled_endpoints = relationship("CrawledEndpoint", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
+    technology_fingerprints = relationship("TechnologyFingerprint", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
+
 
 class Service(Base):
     """
