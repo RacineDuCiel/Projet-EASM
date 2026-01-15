@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import type { Scan, Asset } from '@/types';
+import type { Scan, Vulnerability } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -13,6 +13,11 @@ import { getProfileDisplayName } from '@/components/scans/ProfileSelector';
 
 type SortDirection = 'asc' | 'desc';
 type SortKey = 'severity' | 'title' | 'asset';
+
+// Extended vulnerability type with asset_value from backend
+interface VulnerabilityWithAsset extends Vulnerability {
+    asset_value?: string;
+}
 
 export default function ScanDetailsPage() {
     const { scanId } = useParams<{ scanId: string }>();
@@ -30,32 +35,25 @@ export default function ScanDetailsPage() {
         }
     });
 
-    // 2. Fetch Assets (Filtered by Scope)
-    const { data: assets, isLoading: isLoadingAssets } = useQuery({
-        queryKey: ['scan-assets', scan?.scope_id],
+    // 2. Fetch Vulnerabilities for THIS specific scan
+    const { data: vulnerabilities, isLoading: isLoadingVulns } = useQuery({
+        queryKey: ['scan-vulnerabilities', scanId],
         queryFn: async () => {
-            if (!scan?.scope_id) return [];
-            const response = await api.get<Asset[]>(`/assets/?scope_id=${scan.scope_id}`);
+            const response = await api.get<VulnerabilityWithAsset[]>(`/scans/${scanId}/vulnerabilities`);
             return response.data;
         },
-        enabled: !!scan?.scope_id,
-        refetchInterval: (query) => {
+        enabled: !!scanId,
+        refetchInterval: () => {
             // Poll if scan is running
             return scan?.status === 'running' ? 5000 : false;
         }
     });
 
-    // Flatten and Sort Vulnerabilities
-    // MOVED UP: Hooks must be called before any early return
+    // Sort Vulnerabilities
     const sortedVulns = useMemo(() => {
-        if (!assets) return [];
+        if (!vulnerabilities) return [];
 
-        // Defensive coding: ensure asset.vulnerabilities exists
-        const flatVulns = assets.flatMap(asset =>
-            (asset.vulnerabilities || []).map(vuln => ({ ...vuln, assetValue: asset.value }))
-        );
-
-        return flatVulns.sort((a, b) => {
+        return [...vulnerabilities].sort((a, b) => {
             const direction = sortConfig.direction === 'asc' ? 1 : -1;
 
             if (sortConfig.key === 'severity') {
@@ -70,12 +68,12 @@ export default function ScanDetailsPage() {
             }
 
             if (sortConfig.key === 'asset') {
-                return (a.assetValue || '').localeCompare(b.assetValue || '') * direction;
+                return (a.asset_value || '').localeCompare(b.asset_value || '') * direction;
             }
 
             return 0;
         });
-    }, [assets, sortConfig]);
+    }, [vulnerabilities, sortConfig]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -83,8 +81,6 @@ export default function ScanDetailsPage() {
             direction: current.key === key && current.direction === 'desc' ? 'asc' : 'desc'
         }));
     };
-
-    const totalVulns = assets?.reduce((acc, asset) => acc + (asset.vulnerabilities?.length || 0), 0) || 0;
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -145,7 +141,12 @@ export default function ScanDetailsPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {isLoadingAssets ? <Loader2 className="h-6 w-6 animate-spin" /> : (assets?.length || 0)}
+                            {scan.assets_scanned}
+                            {scan.assets_skipped > 0 && (
+                                <span className="text-sm font-normal text-muted-foreground ml-2">
+                                    ({scan.assets_skipped} skipped)
+                                </span>
+                            )}
                         </div>
                     </CardContent>
                 </Card>
@@ -156,7 +157,7 @@ export default function ScanDetailsPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {isLoadingAssets ? <Loader2 className="h-6 w-6 animate-spin" /> : totalVulns}
+                            {isLoadingVulns ? <Loader2 className="h-6 w-6 animate-spin" /> : (vulnerabilities?.length || 0)}
                         </div>
                     </CardContent>
                 </Card>
@@ -190,7 +191,7 @@ export default function ScanDetailsPage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoadingAssets ? (
+                            {isLoadingVulns ? (
                                 <TableRow>
                                     <TableCell colSpan={4} className="h-24 text-center">
                                         <div className="flex justify-center items-center gap-2 text-muted-foreground">
@@ -212,7 +213,7 @@ export default function ScanDetailsPage() {
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="font-medium">{vuln.title}</TableCell>
-                                        <TableCell className="font-mono text-sm">{vuln.assetValue}</TableCell>
+                                        <TableCell className="font-mono text-sm">{vuln.asset_value || '-'}</TableCell>
                                         <TableCell className="text-muted-foreground text-sm max-w-md truncate" title={vuln.description}>
                                             {vuln.description || '-'}
                                         </TableCell>

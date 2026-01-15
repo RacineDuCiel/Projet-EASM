@@ -90,22 +90,24 @@ async def add_vulnerability_stream(
     """
     Endpoint dédié au streaming temps réel de vulnérabilités.
     Permet aux workers de remonter instantanément chaque vulnérabilité découverte.
+    Chaque vulnérabilité est liée au scan qui l'a trouvée.
     """
     try:
         # Vérifier que le scan existe
         scan = await ScanService.get_scan(db, scan_id)
         if not scan:
             raise HTTPException(status_code=404, detail="Scan not found")
-        
-        # Créer ou mettre à jour l'asset et ajouter la vulnérabilité
+
+        # Créer ou mettre à jour l'asset et ajouter la vulnérabilité (liée au scan)
         db_vuln = await asset_service.add_vulnerability_realtime(
-            db, scan.scope_id, vulnerability, background_tasks
+            db, scan.scope_id, scan_id, vulnerability, background_tasks
         )
-        
+
         return {
             "status": "vulnerability_added",
             "vulnerability_id": str(db_vuln.id),
-            "asset_id": str(db_vuln.asset_id)
+            "asset_id": str(db_vuln.asset_id),
+            "scan_id": str(scan_id)
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to add vulnerability: {str(e)}")
@@ -171,6 +173,29 @@ async def get_scan_profiles():
     Used by frontend to display profile selection UI.
     """
     return ScanService.get_available_profiles()
+
+
+@router.get("/{scan_id}/vulnerabilities", response_model=List[schemas.VulnerabilityWithAsset])
+async def get_scan_vulnerabilities(
+    scan_id: UUID,
+    db: AsyncSession = Depends(database.get_db)
+):
+    """
+    Get all vulnerabilities discovered by a specific scan.
+    Each scan has its own isolated results.
+    Returns vulnerabilities with asset information for display.
+    """
+    scan = await ScanService.get_scan(db, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    vulnerabilities = await crud.get_vulnerabilities_by_scan(db, scan_id)
+
+    # Transform to include asset_value
+    return [
+        schemas.VulnerabilityWithAsset.from_orm_with_asset(v)
+        for v in vulnerabilities
+    ]
 
 
 @router.get("/", response_model=List[schemas.Scan])

@@ -72,9 +72,30 @@ class Vulnerability(VulnerabilityBase):
     id: UUID
     asset_id: UUID
     service_id: Optional[UUID] = None
+    scan_id: Optional[UUID] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class VulnerabilityWithAsset(Vulnerability):
+    """Vulnerability with embedded asset information for scan results."""
+    asset_value: Optional[str] = None
+
+    @classmethod
+    def from_orm_with_asset(cls, vuln):
+        return cls(
+            id=vuln.id,
+            asset_id=vuln.asset_id,
+            service_id=vuln.service_id,
+            scan_id=vuln.scan_id,
+            title=vuln.title,
+            severity=vuln.severity,
+            description=vuln.description,
+            status=vuln.status,
+            created_at=vuln.created_at,
+            asset_value=vuln.asset.value if vuln.asset else None
+        )
 
 class AssetBase(BaseModel):
     value: str

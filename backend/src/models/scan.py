@@ -34,6 +34,7 @@ class Scan(Base):
 
     scope = relationship("Scope", back_populates="scans", lazy="selectin")
     events = relationship("ScanEvent", back_populates="scan", cascade="all, delete-orphan", lazy="selectin", order_by="ScanEvent.created_at")
+    vulnerabilities = relationship("Vulnerability", back_populates="scan", lazy="selectin")
 
 class ScanEvent(Base):
     __tablename__ = "scan_events"

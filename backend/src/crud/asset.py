@@ -237,6 +237,33 @@ async def get_vulnerability_by_title(
     return result.scalar_one_or_none()
 
 
+async def get_vulnerability_by_scan_and_title(
+    db: AsyncSession, scan_id: UUID, title: str
+) -> models.Vulnerability:
+    """Get a vulnerability by scan and title (for per-scan deduplication)."""
+    result = await db.execute(
+        select(models.Vulnerability)
+        .where(and_(
+            models.Vulnerability.scan_id == scan_id,
+            models.Vulnerability.title == title
+        ))
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_vulnerabilities_by_scan(
+    db: AsyncSession, scan_id: UUID
+) -> list:
+    """Get all vulnerabilities found by a specific scan."""
+    result = await db.execute(
+        select(models.Vulnerability)
+        .where(models.Vulnerability.scan_id == scan_id)
+        .options(selectinload(models.Vulnerability.asset))
+        .order_by(models.Vulnerability.created_at.desc())
+    )
+    return result.scalars().all()
+
+
 async def update_service_technologies(
     db: AsyncSession,
     scope_id: UUID,

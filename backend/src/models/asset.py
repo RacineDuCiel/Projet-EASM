@@ -80,18 +80,22 @@ class Service(Base):
 class Vulnerability(Base):
     """
     Represents a discovered vulnerability on an asset.
+    Each vulnerability is linked to the scan that discovered it.
     """
     __tablename__ = "vulnerabilities"
     __table_args__ = (
         Index('ix_vulnerabilities_asset_id', 'asset_id'),
+        Index('ix_vulnerabilities_scan_id', 'scan_id'),
         Index('ix_vulnerabilities_severity', 'severity'),
         Index('ix_vulnerabilities_status', 'status'),
         Index('ix_vulnerabilities_asset_title', 'asset_id', 'title'),  # For dedup lookups
+        Index('ix_vulnerabilities_scan_title', 'scan_id', 'title'),  # For scan-specific dedup
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id"), nullable=False)
     service_id = Column(UUID(as_uuid=True), ForeignKey("services.id"), nullable=True)
+    scan_id = Column(UUID(as_uuid=True), ForeignKey("scans.id"), nullable=True)  # Links vuln to specific scan
     title = Column(String, nullable=False)
     severity = Column(SqlEnum(Severity), nullable=False)
     description = Column(Text, nullable=True)
@@ -100,3 +104,4 @@ class Vulnerability(Base):
 
     asset = relationship("Asset", back_populates="vulnerabilities", lazy="selectin")
     service = relationship("Service", back_populates="vulnerabilities", lazy="selectin")
+    scan = relationship("Scan", back_populates="vulnerabilities", lazy="selectin")
