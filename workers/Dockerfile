@@ -135,17 +135,33 @@ COPY . .
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# TODO: Security hardening for production
-# The non-root setup with capabilities causes issues in WSL2/Docker Desktop
-# For production on real Linux servers, uncomment the following:
-#
-# RUN groupadd -r easm-worker && useradd -r -g easm-worker easm-worker
-# RUN setcap cap_net_raw,cap_net_admin,cap_net_bind_service+eip /usr/local/bin/naabu
-# RUN chown -R easm-worker:easm-worker /app
-# RUN mkdir -p /home/easm-worker/.config && chown -R easm-worker:easm-worker /home/easm-worker
-# USER easm-worker
-#
-# TEMPORARY: Running as root for dev/testing in WSL2/Docker Desktop environment
+# Security: Create non-root user for running workers
+RUN groupadd -r easm-worker && useradd -r -g easm-worker -d /home/easm-worker -m easm-worker
+
+# Install libcap2-bin for setcap and set capabilities for Naabu
+# Naabu requires raw socket access for SYN scanning
+RUN apt-get update && apt-get install -y --no-install-recommends libcap2-bin \
+    && setcap cap_net_raw,cap_net_admin+eip /usr/local/bin/naabu \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create necessary directories with proper ownership
+RUN mkdir -p /home/easm-worker/.config/nuclei \
+    && mkdir -p /home/easm-worker/nuclei-templates \
+    && chown -R easm-worker:easm-worker /app \
+    && chown -R easm-worker:easm-worker /home/easm-worker
+
+# Copy nuclei templates to user directory (from root location)
+RUN cp -r /root/nuclei-templates/* /home/easm-worker/nuclei-templates/ \
+    && chown -R easm-worker:easm-worker /home/easm-worker/nuclei-templates \
+    && rm -rf /root/nuclei-templates
+
+# Set environment for non-root user
+ENV HOME=/home/easm-worker
+ENV NUCLEI_TEMPLATES=/home/easm-worker/nuclei-templates
+
+# Switch to non-root user
+USER easm-worker
 
 # Health check for worker process
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \

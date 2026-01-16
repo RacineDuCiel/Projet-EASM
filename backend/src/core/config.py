@@ -5,11 +5,19 @@ from pydantic import field_validator
 class Settings(BaseSettings):
     # Environment
     ENVIRONMENT: str = "development"
-    
+
     # Security
     SECRET_KEY: str
     FIRST_SUPERUSER: str = "admin"
     FIRST_SUPERUSER_PASSWORD: str = "ChangeMe123!"
+
+    # CORS
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """Parse CORS_ORIGINS string into a list of origins."""
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
     
     # Database
     POSTGRES_USER: str = "easm_user"

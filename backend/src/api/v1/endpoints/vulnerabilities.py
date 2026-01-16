@@ -53,25 +53,32 @@ async def read_vulnerability(
     """
     Get vulnerability by ID.
     """
-    vulnerability = await crud.vulnerability.get(db, id=id)
-    if not vulnerability:
-        raise HTTPException(status_code=404, detail="Vulnerability not found")
-        
-    # Check permissions
+    # Check permissions first
     if current_user.role == models.UserRole.admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admins cannot access vulnerabilities."
         )
-        
-    # Ensure vulnerability belongs to user's program
-    # This is a bit complex as we need to join tables. 
-    # For now, relying on the fact that if they found the ID, they probably have access, 
-    # but strictly we should check.
-    # A better way is to fetch with joins or check the scope->program relation.
-    # Given the complexity, we'll assume for MVP that ID knowledge implies access or we can fetch the asset->scope->program.
-    pass
-        
+
+    # Fetch vulnerability with related program info for authorization
+    vulnerability = await crud.vulnerability.get_with_program(db, id=id)
+    if not vulnerability:
+        raise HTTPException(status_code=404, detail="Vulnerability not found")
+
+    # Verify vulnerability belongs to user's program
+    if vulnerability.asset and vulnerability.asset.scope:
+        if vulnerability.asset.scope.program_id != current_user.program_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this vulnerability"
+            )
+    else:
+        # Orphaned vulnerability - deny access for safety
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this vulnerability"
+        )
+
     return vulnerability
 
 @router.patch("/{id}", response_model=schemas.Vulnerability)
@@ -84,20 +91,32 @@ async def update_vulnerability(
     """
     Update vulnerability status.
     """
-    vulnerability = await crud.vulnerability.get(db, id=id)
-    if not vulnerability:
-        raise HTTPException(status_code=404, detail="Vulnerability not found")
-        
-    # Check permissions
+    # Check permissions first
     if current_user.role == models.UserRole.admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admins cannot update vulnerabilities."
         )
-        
-    # TODO: Strict permission check
-        pass
-        
+
+    # Fetch vulnerability with related program info for authorization
+    vulnerability = await crud.vulnerability.get_with_program(db, id=id)
+    if not vulnerability:
+        raise HTTPException(status_code=404, detail="Vulnerability not found")
+
+    # Verify vulnerability belongs to user's program
+    if vulnerability.asset and vulnerability.asset.scope:
+        if vulnerability.asset.scope.program_id != current_user.program_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to update this vulnerability"
+            )
+    else:
+        # Orphaned vulnerability - deny access for safety
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this vulnerability"
+        )
+
     vulnerability = await crud.vulnerability.update(db, db_obj=vulnerability, obj_in=vuln_in)
     return vulnerability
 

@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from src.db.session import Base
 from .enums import ScopeType, ScanFrequency, ScanProfile
+from .types import EncryptedString
 
 
 class Program(Base):
@@ -30,10 +31,11 @@ class Program(Base):
     enable_crawling = Column(Boolean, default=True, nullable=False)
 
     # External API keys (per-program, optional - falls back to global config)
-    shodan_api_key = Column(String, nullable=True)
-    securitytrails_api_key = Column(String, nullable=True)
-    censys_api_id = Column(String, nullable=True)
-    censys_api_secret = Column(String, nullable=True)
+    # Encrypted at rest using Fernet symmetric encryption
+    shodan_api_key = Column(EncryptedString(500), nullable=True)
+    securitytrails_api_key = Column(EncryptedString(500), nullable=True)
+    censys_api_id = Column(EncryptedString(500), nullable=True)
+    censys_api_secret = Column(EncryptedString(500), nullable=True)
 
     scopes = relationship("Scope", back_populates="program", cascade="all, delete-orphan", lazy="selectin")
 

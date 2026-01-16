@@ -60,11 +60,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS Configuration - MUST be added LAST (executes first)
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+# CORS Configuration - loaded from environment
+cors_origins = settings.cors_origins_list
 
 # GZip compression - added BEFORE CORS so CORS runs first
 app.add_middleware(GZipMiddleware, minimum_size=500)
@@ -72,7 +69,7 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 # CORS middleware - added LAST so it runs FIRST and handles all responses including errors
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -87,10 +84,10 @@ async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
     Custom handler for RateLimitExceeded to ensure CORS headers are present.
     """
     response = _rate_limit_exceeded_handler(request, exc)
-    
+
     # Manually add CORS headers for rate limit responses
     origin = request.headers.get("origin")
-    if origin in origins:
+    if origin in cors_origins:
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Methods"] = "*"
@@ -118,12 +115,12 @@ async def global_exception_handler(request: Request, exc: Exception):
     
     # Add CORS headers
     origin = request.headers.get("origin")
-    if origin in origins:
+    if origin in cors_origins:
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Methods"] = "*"
         response.headers["Access-Control-Allow-Headers"] = "*"
-    
+
     return response
 
 # Include Routers
