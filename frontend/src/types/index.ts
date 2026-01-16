@@ -18,13 +18,12 @@ export interface DashboardStats {
     };
 }
 
-// Scan Profiles - replaces ScanType and ScanDepth
+// Scan Profiles - available for manual scans
 export type ScanProfile =
     | 'discovery'
     | 'quick_assessment'
     | 'standard_assessment'
-    | 'full_audit'
-    | 'continuous_monitoring';
+    | 'full_audit';
 
 export type ScanPhase =
     | 'asset_discovery'
@@ -107,6 +106,9 @@ export interface Program {
     custom_ports?: string;
     nuclei_rate_limit?: number;
     nuclei_timeout?: number;
+    // Automated monitoring configuration
+    auto_scan_enabled: boolean;
+    delta_scan_enabled: boolean;
     delta_scan_threshold_hours: number;
 }
 export interface User {

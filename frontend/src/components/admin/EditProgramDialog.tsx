@@ -17,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Search, Zap, BarChart3, ShieldCheck, RefreshCw } from "lucide-react";
+import { Loader2, Search, Zap, BarChart3, ShieldCheck } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
 const SCAN_PROFILES: { value: ScanProfile; label: string; description: string; icon: typeof Search }[] = [
@@ -25,13 +25,11 @@ const SCAN_PROFILES: { value: ScanProfile; label: string; description: string; i
     { value: 'quick_assessment', label: 'Quick Assessment', description: 'Fast scan with prioritized templates', icon: Zap },
     { value: 'standard_assessment', label: 'Standard Assessment', description: 'Balanced approach (recommended)', icon: BarChart3 },
     { value: 'full_audit', label: 'Full Audit', description: 'Comprehensive scan with all templates', icon: ShieldCheck },
-    { value: 'continuous_monitoring', label: 'Continuous Monitoring', description: 'Delta-based efficient scanning', icon: RefreshCw },
 ];
 
 const programSchema = z.object({
     name: z.string().min(2, "Name must be at least 2 characters"),
-    default_scan_profile: z.enum(["discovery", "quick_assessment", "standard_assessment", "full_audit", "continuous_monitoring"]),
-    delta_scan_threshold_hours: z.coerce.number().int().positive().optional().or(z.literal("")),
+    default_scan_profile: z.enum(["discovery", "quick_assessment", "standard_assessment", "full_audit"]),
     custom_ports: z.string().optional(),
     nuclei_rate_limit: z.coerce.number().int().positive().optional().or(z.literal("")),
     nuclei_timeout: z.coerce.number().int().positive().optional().or(z.literal("")),
@@ -53,7 +51,6 @@ export function EditProgramDialog({ program, open, onOpenChange }: EditProgramDi
         defaultValues: {
             name: "",
             default_scan_profile: "standard_assessment",
-            delta_scan_threshold_hours: "",
             custom_ports: "",
             nuclei_rate_limit: "",
             nuclei_timeout: "",
@@ -67,7 +64,6 @@ export function EditProgramDialog({ program, open, onOpenChange }: EditProgramDi
             reset({
                 name: program.name,
                 default_scan_profile: program.default_scan_profile || "standard_assessment",
-                delta_scan_threshold_hours: program.delta_scan_threshold_hours || "",
                 custom_ports: program.custom_ports || "",
                 nuclei_rate_limit: program.nuclei_rate_limit || "",
                 nuclei_timeout: program.nuclei_timeout || "",
@@ -98,7 +94,6 @@ export function EditProgramDialog({ program, open, onOpenChange }: EditProgramDi
         // Clean up empty values before sending
         const cleanData = {
             ...data,
-            delta_scan_threshold_hours: data.delta_scan_threshold_hours || null,
             custom_ports: data.custom_ports || null,
             nuclei_rate_limit: data.nuclei_rate_limit || null,
             nuclei_timeout: data.nuclei_timeout || null,
@@ -160,26 +155,6 @@ export function EditProgramDialog({ program, open, onOpenChange }: EditProgramDi
                             </p>
                         </div>
                     </div>
-
-                    {/* Delta Scan Threshold (only for continuous_monitoring) */}
-                    {selectedProfile === 'continuous_monitoring' && (
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="delta_scan_threshold_hours" className="text-right">
-                                Delta Threshold
-                            </Label>
-                            <div className="col-span-3">
-                                <Input
-                                    id="delta_scan_threshold_hours"
-                                    type="number"
-                                    placeholder="24"
-                                    {...register("delta_scan_threshold_hours")}
-                                />
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    Hours before an asset is considered stale (default: 24h)
-                                </p>
-                            </div>
-                        </div>
-                    )}
 
                     {/* Custom Ports */}
                     <div className="grid grid-cols-4 items-center gap-4">

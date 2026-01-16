@@ -100,9 +100,13 @@ async def delete_scope(db: AsyncSession, scope_id: UUID):
     return scope
 
 async def get_scheduled_programs(db: AsyncSession):
+    """Get programs with auto-scan enabled and a valid scan frequency."""
     result = await db.execute(
         select(models.Program)
         .options(selectinload(models.Program.scopes))
-        .where(models.Program.scan_frequency != models.ScanFrequency.never)
+        .where(
+            models.Program.auto_scan_enabled == True,
+            models.Program.scan_frequency != models.ScanFrequency.never
+        )
     )
     return result.scalars().all()

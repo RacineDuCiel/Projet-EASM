@@ -29,7 +29,8 @@ class ScanService:
         program: models.Program,
         scan_id: str,
         target: str,
-        specific_port: int = None
+        specific_port: int = None,
+        force_delta: bool = False
     ) -> Dict[str, Any]:
         """Build scan configuration based on profile and program settings.
 
@@ -39,6 +40,7 @@ class ScanService:
             scan_id: UUID of the scan
             target: Target domain/IP
             specific_port: If provided, scan only this port (skip discovery)
+            force_delta: If True, enable delta scanning mode regardless of profile
         """
         # Get program overrides
         program_overrides = {
@@ -52,6 +54,10 @@ class ScanService:
 
         # If a specific port is provided, use it instead of port discovery
         ports = str(specific_port) if specific_port else config.ports
+
+        # Delta mode: from profile config OR forced by scheduled scan
+        is_delta = config.is_delta_scan or force_delta
+        delta_hours = program.delta_scan_threshold_hours if is_delta else None
 
         return {
             "scan_id": scan_id,
@@ -67,8 +73,8 @@ class ScanService:
             "run_full_templates": config.run_full_templates,
             "passive_recon_enabled": config.passive_recon_enabled,
             "passive_extended_enabled": config.passive_extended_enabled,
-            "is_delta_scan": config.is_delta_scan,
-            "delta_threshold_hours": config.delta_threshold_hours or program.delta_scan_threshold_hours,
+            "is_delta_scan": is_delta,
+            "delta_threshold_hours": delta_hours,
             "enable_api_integrations": config.enable_api_integrations,
             # API keys from program
             "api_keys": {
@@ -137,11 +143,19 @@ class ScanService:
 
     @staticmethod
     async def check_scheduled_scans(db: AsyncSession) -> List[UUID]:
-        """Check and trigger scheduled scans based on program frequency settings."""
+        """Check and trigger scheduled scans based on program monitoring settings.
+
+        Scheduled scans always use full_audit profile (maximum intensity).
+        Delta mode can be enabled per-program to only scan stale assets.
+        """
         programs = await crud.get_scheduled_programs(db)
         triggered_scans: List[UUID] = []
 
         for program in programs:
+            # Skip if auto_scan is not enabled
+            if not program.auto_scan_enabled:
+                continue
+
             frequency = program.scan_frequency
             delta = None
 
@@ -170,16 +184,58 @@ class ScanService:
                         should_scan = True
 
                 if should_scan:
-                    # Use continuous_monitoring for scheduled scans (delta scanning)
+                    # Use full_audit for scheduled scans (maximum intensity)
                     scan_in = schemas.ScanCreate(
                         scope_id=scope.id,
-                        scan_profile=ScanProfile.continuous_monitoring
+                        scan_profile=ScanProfile.full_audit
                     )
-                    new_scan = await ScanService.create_scan(db, scan_in)
+                    new_scan = await ScanService.create_scan_scheduled(
+                        db, scan_in, force_delta=program.delta_scan_enabled
+                    )
                     if new_scan:
                         triggered_scans.append(new_scan.id)
 
         return triggered_scans
+
+    @staticmethod
+    async def create_scan_scheduled(
+        db: AsyncSession,
+        scan_in: schemas.ScanCreate,
+        force_delta: bool = False
+    ):
+        """Create a scheduled scan with optional delta mode override."""
+        scope = await crud.get_scope(db, scan_in.scope_id)
+        if not scope:
+            return None
+
+        program = await crud.get_program(db, scope.program_id)
+        if not program:
+            return None
+
+        db_scan = await crud.create_scan(db=db, scan=scan_in)
+
+        # Build scan configuration with delta mode override
+        scan_config = ScanService._build_scan_config(
+            scan_in.scan_profile,
+            program,
+            str(db_scan.id),
+            scope.value,
+            specific_port=scope.port,
+            force_delta=force_delta
+        )
+
+        celery_app.send_task(
+            'src.tasks.run_scan',
+            args=[scope.value, str(db_scan.id)],
+            kwargs={'scan_config': scan_config},
+            queue='discovery'
+        )
+
+        logger.info(
+            f"Created scheduled scan {db_scan.id} with profile={scan_in.scan_profile.value}, "
+            f"delta_mode={force_delta}"
+        )
+        return db_scan
 
     @staticmethod
     async def resume_interrupted_scans(db: AsyncSession) -> int:

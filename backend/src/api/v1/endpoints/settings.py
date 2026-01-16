@@ -20,6 +20,10 @@ router = APIRouter(
 class SettingsUpdate(BaseModel):
     discord_webhook_url: str | None = None
     scan_frequency: ScanFrequency | None = None
+    # Automated monitoring configuration
+    auto_scan_enabled: bool | None = None
+    delta_scan_enabled: bool | None = None
+    delta_scan_threshold_hours: int | None = None
 
 @router.get("/", response_model=schemas.Program)
 async def get_settings(
@@ -65,11 +69,18 @@ async def update_settings(
         program.discord_webhook_url = settings.discord_webhook_url
     if settings.scan_frequency is not None:
         program.scan_frequency = settings.scan_frequency
-        
+    # Automated monitoring configuration
+    if settings.auto_scan_enabled is not None:
+        program.auto_scan_enabled = settings.auto_scan_enabled
+    if settings.delta_scan_enabled is not None:
+        program.delta_scan_enabled = settings.delta_scan_enabled
+    if settings.delta_scan_threshold_hours is not None:
+        program.delta_scan_threshold_hours = settings.delta_scan_threshold_hours
+
     db.add(program)
     await db.commit()
     await db.refresh(program)
-    
+
     return program
 
 @router.post("/test-notification")

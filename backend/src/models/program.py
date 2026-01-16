@@ -22,7 +22,11 @@ class Program(Base):
     custom_ports = Column(String, nullable=True)  # Custom ports override, e.g., "80,443,8080-8090"
     nuclei_rate_limit = Column(Integer, nullable=True)  # Override default Nuclei rate limit
     nuclei_timeout = Column(Integer, nullable=True)  # Override default Nuclei timeout (seconds)
-    delta_scan_threshold_hours = Column(Integer, default=24, nullable=False)  # For continuous monitoring
+
+    # Automated monitoring configuration
+    auto_scan_enabled = Column(Boolean, default=False, nullable=False)  # Enable scheduled scans
+    delta_scan_enabled = Column(Boolean, default=False, nullable=False)  # Only scan stale assets
+    delta_scan_threshold_hours = Column(Integer, default=24, nullable=False)  # Hours before asset is stale
 
     # Passive Recon configuration
     passive_recon_enabled = Column(Boolean, default=True, nullable=False)

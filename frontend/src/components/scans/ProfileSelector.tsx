@@ -7,7 +7,6 @@ import {
     Zap,
     BarChart3,
     ShieldCheck,
-    RefreshCw,
     Clock,
     Activity,
     Loader2
@@ -18,7 +17,6 @@ const profileIcons: Record<ScanProfile, typeof Search> = {
     quick_assessment: Zap,
     standard_assessment: BarChart3,
     full_audit: ShieldCheck,
-    continuous_monitoring: RefreshCw,
 };
 
 const intensityColors: Record<string, string> = {
@@ -122,7 +120,6 @@ export function getProfileDisplayName(profile: ScanProfile): string {
         quick_assessment: 'Quick Assessment',
         standard_assessment: 'Standard Assessment',
         full_audit: 'Full Audit',
-        continuous_monitoring: 'Continuous Monitoring',
     };
     return displayNames[profile] || profile;
 }
@@ -136,7 +133,6 @@ export function ProfileBadge({ profile }: { profile: ScanProfile }) {
         quick_assessment: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
         standard_assessment: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
         full_audit: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
-        continuous_monitoring: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300',
     };
 
     return (

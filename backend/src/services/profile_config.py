@@ -122,26 +122,6 @@ PROFILE_DEFINITIONS: Dict[ScanProfile, Dict[str, Any]] = {
         "estimated_duration": "1-4 heures",
         "intensity_label": "Heavy",
     },
-    ScanProfile.continuous_monitoring: {
-        "display_name": "Continuous Monitoring",
-        "description": "Scan delta efficace. Ne rescanne que les assets périmés.",
-        "phases": [
-            ScanPhase.asset_discovery,
-            ScanPhase.service_enumeration,
-            ScanPhase.tech_detection,
-            ScanPhase.vuln_assessment
-        ],
-        "port_preset": "standard",
-        "nuclei_intensity": "prioritized",
-        "passive_level": "essential",
-        "rate_limit": 200,
-        "timeout": 5,
-        "retries": 1,
-        "delta_enabled": True,
-        "api_integrations": False,
-        "estimated_duration": "5-20 min (selon changements)",
-        "intensity_label": "Adaptive",
-    },
 }
 
 

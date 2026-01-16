@@ -39,6 +39,9 @@ class ProgramBase(BaseModel):
     custom_ports: str | None = None
     nuclei_rate_limit: int | None = None
     nuclei_timeout: int | None = None
+    # Automated monitoring configuration
+    auto_scan_enabled: bool = False
+    delta_scan_enabled: bool = False
     delta_scan_threshold_hours: int = 24
 
 
@@ -57,6 +60,9 @@ class ProgramUpdate(BaseModel):
     custom_ports: Optional[str] = None
     nuclei_rate_limit: Optional[int] = None
     nuclei_timeout: Optional[int] = None
+    # Automated monitoring configuration
+    auto_scan_enabled: Optional[bool] = None
+    delta_scan_enabled: Optional[bool] = None
     delta_scan_threshold_hours: Optional[int] = None
 
     @field_validator('name')
@@ -76,6 +82,9 @@ class Program(ProgramBase):
     custom_ports: str | None = None
     nuclei_rate_limit: int | None = None
     nuclei_timeout: int | None = None
+    # Automated monitoring configuration
+    auto_scan_enabled: bool = False
+    delta_scan_enabled: bool = False
     delta_scan_threshold_hours: int = 24
     created_at: datetime
     scopes: List[Scope] = []

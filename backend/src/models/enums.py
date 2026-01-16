@@ -14,7 +14,6 @@ class ScanProfile(str, enum.Enum):
     quick_assessment = "quick_assessment"       # Discovery + basic vuln scan
     standard_assessment = "standard_assessment" # Balanced approach (recommended)
     full_audit = "full_audit"                   # Comprehensive, all templates
-    continuous_monitoring = "continuous_monitoring"  # Delta-based efficient scanning
 
 
 class ScanPhase(str, enum.Enum):

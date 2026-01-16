@@ -7,14 +7,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Bell, Save, Loader2, Send, CalendarClock, Settings } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Bell, Save, Loader2, Send, Radar, Clock, Info, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
 export default function SettingsPage() {
     const queryClient = useQueryClient();
     const { toast } = useToast();
+
+    // Notifications state
     const [webhookUrl, setWebhookUrl] = useState('');
-    const [scanFrequency, setScanFrequency] = useState<string>('never');
+
+    // Automated monitoring state
+    const [autoScanEnabled, setAutoScanEnabled] = useState(false);
+    const [scanFrequency, setScanFrequency] = useState<string>('daily');
+    const [deltaScanEnabled, setDeltaScanEnabled] = useState(false);
+    const [deltaScanThresholdHours, setDeltaScanThresholdHours] = useState(24);
 
     // Fetch Settings (Program)
     const { data: program, isLoading, error } = useQuery({
@@ -30,13 +38,24 @@ export default function SettingsPage() {
     useEffect(() => {
         if (program) {
             if (program.discord_webhook_url) setWebhookUrl(program.discord_webhook_url);
-            if (program.scan_frequency) setScanFrequency(program.scan_frequency);
+            setAutoScanEnabled(program.auto_scan_enabled ?? false);
+            if (program.scan_frequency && program.scan_frequency !== 'never') {
+                setScanFrequency(program.scan_frequency);
+            }
+            setDeltaScanEnabled(program.delta_scan_enabled ?? false);
+            setDeltaScanThresholdHours(program.delta_scan_threshold_hours ?? 24);
         }
     }, [program]);
 
     // Update Settings Mutation
     const updateSettingsMutation = useMutation({
-        mutationFn: async (data: { discord_webhook_url: string; scan_frequency: string }) => {
+        mutationFn: async (data: {
+            discord_webhook_url: string;
+            auto_scan_enabled: boolean;
+            scan_frequency: string;
+            delta_scan_enabled: boolean;
+            delta_scan_threshold_hours: number;
+        }) => {
             await api.patch('/settings/', data);
         },
         onSuccess: () => {
@@ -78,7 +97,10 @@ export default function SettingsPage() {
     const handleSave = () => {
         updateSettingsMutation.mutate({
             discord_webhook_url: webhookUrl,
-            scan_frequency: scanFrequency
+            auto_scan_enabled: autoScanEnabled,
+            scan_frequency: autoScanEnabled ? scanFrequency : 'never',
+            delta_scan_enabled: deltaScanEnabled,
+            delta_scan_threshold_hours: deltaScanThresholdHours
         });
     };
 
@@ -98,7 +120,7 @@ export default function SettingsPage() {
                 <Card>
                     <CardContent className="flex flex-col items-center justify-center p-12 space-y-4">
                         <div className="p-4 rounded-full bg-muted">
-                            <Settings className="h-8 w-8 text-muted-foreground" />
+                            <Info className="h-8 w-8 text-muted-foreground" />
                         </div>
                         <div className="text-center space-y-2">
                             <h3 className="text-lg font-semibold">Unable to load settings</h3>
@@ -119,7 +141,7 @@ export default function SettingsPage() {
             <div>
                 <h2 className="text-3xl font-bold tracking-tight">Settings</h2>
                 <p className="text-muted-foreground">
-                    Manage your program configuration, notifications, and scheduling.
+                    Manage notifications and automated monitoring configuration.
                 </p>
             </div>
 
@@ -165,35 +187,109 @@ export default function SettingsPage() {
                     </CardFooter>
                 </Card>
 
-                {/* Scheduling Card */}
+                {/* Automated Monitoring Card */}
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <CalendarClock className="h-5 w-5" />
-                            Scan Scheduling
+                            <Radar className="h-5 w-5" />
+                            Automated Monitoring
                         </CardTitle>
                         <CardDescription>
-                            Automate your security scans. Choose how often you want the platform to scan your assets.
+                            Configure automatic scheduled scans. When enabled, scans run at maximum intensity (Full Audit).
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="scan-frequency">Automatic Scan Frequency</Label>
-                            <Select value={scanFrequency} onValueChange={setScanFrequency}>
-                                <SelectTrigger id="scan-frequency" className="w-[240px]">
-                                    <SelectValue placeholder="Select frequency" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="never">Never (Manual only)</SelectItem>
-                                    <SelectItem value="daily">Daily</SelectItem>
-                                    <SelectItem value="weekly">Weekly</SelectItem>
-                                    <SelectItem value="monthly">Monthly</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <p className="text-sm text-muted-foreground">
-                                Automated scans will run at midnight UTC based on the selected frequency.
-                            </p>
+                    <CardContent className="space-y-6">
+                        {/* Enable Toggle */}
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label htmlFor="auto-scan-enabled" className="text-base font-medium">
+                                    Enable Automatic Scans
+                                </Label>
+                                <p className="text-sm text-muted-foreground">
+                                    When enabled, scans will run automatically based on the schedule below.
+                                </p>
+                            </div>
+                            <Switch
+                                id="auto-scan-enabled"
+                                checked={autoScanEnabled}
+                                onCheckedChange={setAutoScanEnabled}
+                            />
                         </div>
+
+                        {autoScanEnabled && (
+                            <div className="space-y-6 pt-4 border-t">
+                                {/* Frequency Selection */}
+                                <div className="grid gap-2">
+                                    <Label htmlFor="scan-frequency">Scan Frequency</Label>
+                                    <Select value={scanFrequency} onValueChange={setScanFrequency}>
+                                        <SelectTrigger id="scan-frequency" className="w-[200px]">
+                                            <SelectValue placeholder="Select frequency" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="daily">Daily</SelectItem>
+                                            <SelectItem value="weekly">Weekly</SelectItem>
+                                            <SelectItem value="monthly">Monthly</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-sm text-muted-foreground">
+                                        Scans run at midnight UTC based on this schedule.
+                                    </p>
+                                </div>
+
+                                {/* Intensity Info */}
+                                <div className="flex items-start gap-3 p-4 rounded-lg bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800">
+                                    <ShieldCheck className="h-5 w-5 text-purple-600 dark:text-purple-400 mt-0.5 shrink-0" />
+                                    <div className="space-y-1">
+                                        <p className="text-sm font-medium text-purple-900 dark:text-purple-100">
+                                            Full Audit Intensity
+                                        </p>
+                                        <p className="text-sm text-purple-700 dark:text-purple-300">
+                                            Automatic scans run with comprehensive coverage: all ports, all Nuclei templates, and extended passive reconnaissance.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Delta Mode Toggle */}
+                                <div className="flex items-center justify-between pt-4 border-t">
+                                    <div className="space-y-0.5">
+                                        <Label htmlFor="delta-scan-enabled" className="text-base font-medium">
+                                            Delta Scanning Mode
+                                        </Label>
+                                        <p className="text-sm text-muted-foreground">
+                                            Only scan assets that haven't been scanned within the threshold period.
+                                            Optimizes performance for large inventories.
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        id="delta-scan-enabled"
+                                        checked={deltaScanEnabled}
+                                        onCheckedChange={setDeltaScanEnabled}
+                                    />
+                                </div>
+
+                                {deltaScanEnabled && (
+                                    <div className="ml-6 pl-4 border-l-2 border-muted space-y-2">
+                                        <Label htmlFor="delta-threshold">Delta Threshold</Label>
+                                        <div className="flex items-center gap-2">
+                                            <Clock className="h-4 w-4 text-muted-foreground" />
+                                            <Input
+                                                id="delta-threshold"
+                                                type="number"
+                                                min={1}
+                                                max={720}
+                                                className="w-[100px]"
+                                                value={deltaScanThresholdHours}
+                                                onChange={(e) => setDeltaScanThresholdHours(parseInt(e.target.value) || 24)}
+                                            />
+                                            <span className="text-sm text-muted-foreground">hours</span>
+                                        </div>
+                                        <p className="text-sm text-muted-foreground">
+                                            Assets scanned within this period will be skipped.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 
