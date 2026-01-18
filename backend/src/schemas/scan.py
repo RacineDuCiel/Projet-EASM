@@ -103,3 +103,14 @@ class ScanConfig(BaseModel):
 
     # API integrations
     enable_api_integrations: bool = False
+
+
+class DeltaScanRequest(BaseModel):
+    """Request schema for getting stale assets in delta scan mode."""
+    asset_values: List[str]
+    threshold_hours: int = 24
+
+
+class MarkScannedRequest(BaseModel):
+    """Request schema for marking assets as scanned."""
+    asset_values: List[str]

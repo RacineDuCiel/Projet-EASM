@@ -372,3 +372,109 @@ async def update_asset(
 
     logger.info(f"Updated asset {db_asset.value} with {update_data}")
     return db_asset
+
+
+async def get_stale_assets(
+    db: AsyncSession,
+    scope_id: UUID,
+    threshold_hours: int = 24,
+    asset_values: List[str] = None
+) -> List[dict]:
+    """
+    Get assets that haven't been scanned within the threshold period.
+    Used for delta scanning to skip recently scanned assets.
+
+    Args:
+        db: Database session
+        scope_id: Scope to check assets for
+        threshold_hours: Hours since last scan to consider asset "stale"
+        asset_values: Optional list of asset values to filter
+
+    Returns:
+        List of dicts with asset value and last_scanned_at
+    """
+    from datetime import timedelta
+    from sqlalchemy import or_
+
+    threshold_time = datetime.now(timezone.utc) - timedelta(hours=threshold_hours)
+
+    # Build base query
+    query = select(
+        models.Asset.value,
+        models.Asset.last_scanned_at
+    ).where(models.Asset.scope_id == scope_id)
+
+    # Filter by asset values if provided
+    if asset_values:
+        query = query.where(models.Asset.value.in_(asset_values))
+
+    # Filter for stale assets: never scanned OR scanned before threshold
+    query = query.where(
+        or_(
+            models.Asset.last_scanned_at.is_(None),
+            models.Asset.last_scanned_at < threshold_time
+        )
+    )
+
+    result = await db.execute(query)
+
+    return [
+        {
+            "value": row.value,
+            "last_scanned_at": row.last_scanned_at.isoformat() if row.last_scanned_at else None
+        }
+        for row in result
+    ]
+
+
+async def mark_asset_scanned(
+    db: AsyncSession,
+    scope_id: UUID,
+    asset_value: str
+) -> None:
+    """
+    Mark an asset as scanned by updating last_scanned_at and incrementing scan_count.
+    """
+    result = await db.execute(
+        select(models.Asset)
+        .where(and_(
+            models.Asset.scope_id == scope_id,
+            models.Asset.value == asset_value
+        ))
+    )
+    db_asset = result.scalar_one_or_none()
+
+    if db_asset:
+        db_asset.last_scanned_at = datetime.now(timezone.utc)
+        db_asset.scan_count += 1
+        await db.commit()
+        logger.debug(f"Marked asset {asset_value} as scanned (count: {db_asset.scan_count})")
+
+
+async def get_by_domain_pattern(
+    db: AsyncSession,
+    domain_pattern: str,
+    limit: int = 1000
+) -> List[models.Asset]:
+    """
+    Get assets matching a domain pattern (LIKE query).
+    Used for CTEM snapshot building.
+
+    Args:
+        db: Database session
+        domain_pattern: Pattern to match (e.g., "%example.com%")
+        limit: Maximum number of assets to return
+
+    Returns:
+        List of matching Asset objects with services and vulnerabilities
+    """
+    result = await db.execute(
+        select(models.Asset)
+        .where(models.Asset.value.ilike(domain_pattern))
+        .options(
+            selectinload(models.Asset.services),
+            selectinload(models.Asset.vulnerabilities)
+        )
+        .limit(limit)
+    )
+    return result.scalars().all()

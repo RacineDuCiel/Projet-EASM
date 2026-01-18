@@ -18,6 +18,7 @@ const AssetDetailsPage = lazy(() => import('@/pages/assets/AssetDetailsPage'));
 const ScansPage = lazy(() => import('@/pages/ScansPage'));
 const ScanDetailsPage = lazy(() => import('@/pages/ScanDetailsPage'));
 const VulnerabilitiesPage = lazy(() => import('@/pages/vulns/VulnerabilitiesPage'));
+const SecurityPosturePage = lazy(() => import('@/pages/security/SecurityPosturePage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 
 // Admin pages - lazy loaded
@@ -68,6 +69,7 @@ function App() {
                   <Route path="admin/scans" element={<ScansPage />} />
                   <Route path="admin/scans/:scanId" element={<ScanDetailsPage />} />
                   <Route path="vulnerabilities" element={<VulnerabilitiesPage />} />
+                  <Route path="security" element={<SecurityPosturePage />} />
                   <Route path="settings" element={<SettingsPage />} />
                 </Route>
               ) : (
@@ -79,6 +81,7 @@ function App() {
                   <Route path="scans" element={<ScansPage />} />
                   <Route path="scans/:scanId" element={<ScanDetailsPage />} />
                   <Route path="vulnerabilities" element={<VulnerabilitiesPage />} />
+                  <Route path="security" element={<SecurityPosturePage />} />
                   <Route path="settings" element={<SettingsPage />} />
                 </Route>
               )}

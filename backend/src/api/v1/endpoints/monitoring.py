@@ -186,7 +186,12 @@ async def get_recent_assets(db: AsyncSession = Depends(get_db), current_user: Us
     """
     Returns latest 5 discovered assets.
     """
-    query = select(Asset).order_by(Asset.first_seen.desc()).limit(5)
+    from sqlalchemy.orm import selectinload
+    
+    query = select(Asset).options(
+        selectinload(Asset.services),
+        selectinload(Asset.vulnerabilities)
+    ).order_by(Asset.first_seen.desc()).limit(5)
     
     if current_user.role != "admin":
         query = query.join(models.Scope).where(models.Scope.program_id == current_user.program_id)

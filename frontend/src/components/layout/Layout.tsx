@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
-import { Shield, LayoutDashboard, Database, Activity, Settings, LogOut, Users, ShieldAlert, Menu, X } from 'lucide-react';
+import { Shield, LayoutDashboard, Database, Activity, Settings, LogOut, Users, ShieldAlert, ShieldCheck, Menu, X } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/toaster';
@@ -98,6 +98,14 @@ export default function Layout() {
                     >
                         <ShieldAlert className="h-4 w-4" />
                         Vulnerabilities
+                    </Link>
+                    <Link
+                        to="/security"
+                        onClick={closeMobileMenu}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-accent hover:text-accent-foreground transition-colors ${location.pathname === '/security' ? 'bg-accent' : ''}`}
+                    >
+                        <ShieldCheck className="h-4 w-4" />
+                        Security Posture
                     </Link>
                     <Link
                         to="/settings"

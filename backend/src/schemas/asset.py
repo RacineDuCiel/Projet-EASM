@@ -1,4 +1,5 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+import json
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
@@ -15,6 +16,16 @@ class ServiceBase(BaseModel):
     waf_detected: Optional[str] = None
     tls_version: Optional[str] = None
     response_time_ms: Optional[int] = None
+
+    @field_validator('technologies', mode='before')
+    @classmethod
+    def parse_technologies(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return []
+        return v
 
 class ServiceCreate(ServiceBase):
     pass

@@ -18,5 +18,6 @@ from .passive_recon import (
     shodan_task,
     securitytrails_task,
     censys_task,
+    cloud_assets_task,
     finalize_passive_recon,
 )

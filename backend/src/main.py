@@ -8,7 +8,7 @@ from slowapi.errors import RateLimitExceeded
 import logging
 
 from src.db.session import engine, Base, AsyncSessionLocal
-from src.api.v1.endpoints import programs, scans, assets, monitoring, auth, notifications, settings as settings_router, vulnerabilities, logs, passive_intel
+from src.api.v1.endpoints import programs, scans, assets, monitoring, auth, notifications, settings as settings_router, vulnerabilities, logs, passive_intel, security_posture
 from src.core.config import settings
 from src.core.logging import setup_logging
 
@@ -134,6 +134,7 @@ app.include_router(settings_router.router, prefix="/api/v1", tags=["Settings"])
 app.include_router(vulnerabilities.router, prefix="/api/v1/vulnerabilities", tags=["Vulnerabilities"])
 app.include_router(logs.router, prefix="/api/v1/logs", tags=["System Logs"])
 app.include_router(passive_intel.router, prefix="/api/v1", tags=["Passive Intelligence"])
+app.include_router(security_posture.router, prefix="/api/v1/security", tags=["Security Posture"])
 
 @app.get("/health")
 def health_check():

@@ -111,21 +111,37 @@ def discovery_task(self, target: str, scan_id: str):
     log_event(scan_id, f"Phase 1: Starting asset discovery on {target}...")
 
     try:
-        subdomains = tools.run_subfinder(target)
+        result = tools.run_subfinder(target)
 
-        # Always include the main target
+        if not result.is_success:
+            error_msg = result.error.message if result.error else "Unknown error"
+            logger.warning(f"Subfinder failed: {error_msg}, trying alternative discovery")
+
+        subdomains = []
+        if result.is_success:
+            subdomains = result.data.subdomains
+
+        if not subdomains:
+            logger.info("Trying aggregated subdomain discovery...")
+            agg_result = tools.aggregate_subdomain_discovery(
+                domain=target,
+                use_amass=False,
+                use_findomain=True,
+                use_assetfinder=True,
+                parallel=True
+            )
+            subdomains = agg_result.get("subdomains", [])
+
         if target not in subdomains:
             subdomains.append(target)
 
         log_event(scan_id, f"Asset discovery completed. Found {len(subdomains)} assets.")
 
-        # Format assets for backend
         assets = [
             {"value": sub, "asset_type": "subdomain", "is_active": True}
             for sub in subdomains
         ]
 
-        # Send discovered assets to backend
         try:
             resp = post_to_backend(f"/scans/{scan_id}/assets", assets)
             resp.raise_for_status()
@@ -230,12 +246,50 @@ def _filter_stale_assets(assets: List[Dict], scan_id: str, threshold_hours: int)
     Filter assets for delta scanning.
     Returns (assets_to_scan, skipped_count).
 
-    In a full implementation, this would query the backend for last_scanned_at.
-    For now, we scan all assets (delta optimization will be added later).
+    Queries the backend to determine which assets haven't been scanned
+    within the threshold period.
     """
-    # TODO: Implement actual delta scanning by querying backend for last_scanned_at
-    # For now, return all assets
-    return assets, 0
+    if not assets:
+        return assets, 0
+
+    # Extract asset values for the query
+    asset_values = [asset.get("value") for asset in assets if asset.get("value")]
+
+    if not asset_values:
+        return assets, 0
+
+    try:
+        # Query backend for stale assets
+        resp = post_to_backend(
+            f"/scans/{scan_id}/stale-assets",
+            {
+                "asset_values": asset_values,
+                "threshold_hours": threshold_hours
+            }
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        stale_values = {item["value"] for item in data.get("stale_assets", [])}
+
+        # Filter assets to only include stale ones
+        stale_assets = [asset for asset in assets if asset.get("value") in stale_values]
+        skipped_count = len(assets) - len(stale_assets)
+
+        logger.info(
+            f"Delta scan filter: {len(stale_assets)} stale assets to scan, "
+            f"{skipped_count} recently scanned assets skipped"
+        )
+
+        return stale_assets, skipped_count
+
+    except Exception as e:
+        logger.warning(
+            f"Failed to query stale assets from backend: {e}. "
+            f"Falling back to scanning all assets."
+        )
+        # On error, fall back to scanning all assets
+        return assets, 0
 
 
 @app.task(name='src.tasks.finalize_scan', queue='discovery')
@@ -243,17 +297,34 @@ def finalize_scan(results: list, scan_id: str):
     """
     Final step: Scan finalization.
     Called after all asset scans complete.
+    Marks all scanned assets with updated last_scanned_at.
     """
     logger.info(f"Scan {scan_id} completed!")
 
     # Calculate totals from results
     total_vulns = 0
     total_assets = len(results) if results else 0
+    scanned_asset_values = []
 
     for result in (results or []):
         if isinstance(result, dict):
             total_vulns += result.get("vuln_count_prioritized", 0)
             total_vulns += result.get("vuln_count_full", 0)
+            # Collect asset values for marking as scanned
+            if result.get("value"):
+                scanned_asset_values.append(result["value"])
+
+    # Mark assets as scanned for delta scanning
+    if scanned_asset_values:
+        try:
+            resp = post_to_backend(
+                f"/scans/{scan_id}/mark-scanned",
+                {"asset_values": scanned_asset_values}
+            )
+            resp.raise_for_status()
+            logger.info(f"Marked {len(scanned_asset_values)} assets as scanned")
+        except Exception as e:
+            logger.warning(f"Failed to mark assets as scanned: {e}")
 
     # Update scan status
     payload = {"status": "completed", "assets": []}

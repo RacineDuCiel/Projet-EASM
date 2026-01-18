@@ -320,3 +320,37 @@ export interface AssetPassiveIntel {
     shodan_data?: ShodanData;
     crawled_endpoints: CrawledEndpoint[];
 }
+
+// ============================================================================
+// Security Posture Types
+// ============================================================================
+
+// Compliance
+export interface FrameworkScore {
+    framework: string;
+    score: number;
+    total_controls: number;
+    affected_controls: number;
+    compliant_controls: number;
+    severity_breakdown: Record<string, number>;
+}
+
+export interface ComplianceGap {
+    control_id: string;
+    framework: string;
+    title: string;
+    severity: string;
+    priority: number;
+    effort: string;
+    business_impact: string;
+    finding_count: number;
+}
+
+export interface ComplianceAnalysisResponse {
+    timestamp: string;
+    total_vulnerabilities: number;
+    framework_scores: Record<string, FrameworkScore>;
+    gap_analysis: ComplianceGap[];
+    affected_controls_by_framework: Record<string, string[]>;
+}
+

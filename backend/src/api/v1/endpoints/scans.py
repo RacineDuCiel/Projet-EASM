@@ -44,27 +44,33 @@ async def create_scan(
     return db_scan
 
 @router.post("/{scan_id}/results")
-async def receive_scan_results(scan_id: UUID, result: schemas.ScanResult, db: AsyncSession = Depends(database.get_db)):
+async def receive_scan_results(
+    scan_id: UUID,
+    result: schemas.ScanResult,
+    db: AsyncSession = Depends(database.get_db),
+    _: bool = Depends(auth.verify_worker_token)  # Worker authentication
+):
     # 1. Get Scan
     scan = await ScanService.get_scan(db, scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    
+
     # 2. Process Assets (Simple creation for results)
     for asset_data in result.assets:
         await asset_service.create_asset_simple(db, asset_data, scan.scope_id)
-        
+
     # 3. Update Scan Status
     await ScanService.update_status(db, scan_id, result.status)
-    
+
     return {"status": "ok"}
 
 @router.post("/{scan_id}/assets")
 async def add_scan_assets(
-    scan_id: UUID, 
-    assets: List[schemas.AssetCreate], 
+    scan_id: UUID,
+    assets: List[schemas.AssetCreate],
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(database.get_db)
+    db: AsyncSession = Depends(database.get_db),
+    _: bool = Depends(auth.verify_worker_token)  # Worker authentication
 ):
     """
     Endpoint pour ajouter des assets au fil de l'eau (incremental updates).
@@ -85,7 +91,8 @@ async def add_vulnerability_stream(
     scan_id: UUID,
     vulnerability: schemas.VulnerabilityStreamCreate,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(database.get_db)
+    db: AsyncSession = Depends(database.get_db),
+    _: bool = Depends(auth.verify_worker_token)  # Worker authentication
 ):
     """
     Endpoint dédié au streaming temps réel de vulnérabilités.
@@ -116,7 +123,8 @@ async def add_vulnerability_stream(
 async def update_tech_detection(
     scan_id: UUID,
     tech_result: schemas.TechDetectionResult,
-    db: AsyncSession = Depends(database.get_db)
+    db: AsyncSession = Depends(database.get_db),
+    _: bool = Depends(auth.verify_worker_token)  # Worker authentication
 ):
     """
     Endpoint for workers to report technology detection results.
@@ -149,7 +157,12 @@ async def update_tech_detection(
 
 
 @router.post("/{scan_id}/events", response_model=schemas.ScanEvent)
-async def add_scan_event(scan_id: UUID, event: schemas.ScanEventCreate, db: AsyncSession = Depends(database.get_db)):
+async def add_scan_event(
+    scan_id: UUID,
+    event: schemas.ScanEventCreate,
+    db: AsyncSession = Depends(database.get_db),
+    _: bool = Depends(auth.verify_worker_token)  # Worker authentication
+):
     # 1. Get Scan
     scan = await ScanService.get_scan(db, scan_id)
     if not scan:
@@ -211,7 +224,10 @@ async def read_scans(
         return await ScanService.get_scans_by_program(db, program_id=current_user.program_id, skip=skip, limit=limit)
 
 @router.post("/check-schedules")
-async def check_schedules(db: AsyncSession = Depends(database.get_db)):
+async def check_schedules(
+    db: AsyncSession = Depends(database.get_db),
+    _: bool = Depends(auth.verify_worker_token)  # Worker authentication
+):
     """
     Triggered by Celery Beat to check for scheduled scans.
     """
@@ -229,8 +245,60 @@ async def read_scan(scan_id: UUID, db: AsyncSession = Depends(database.get_db)):
 async def stop_scan(scan_id: UUID, db: AsyncSession = Depends(database.get_db), current_user: User = Depends(auth.get_current_user)):
     if current_user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Only admins can stop scans")
-        
+
     scan = await ScanService.stop_scan(db, scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
     return scan
+
+
+@router.post("/{scan_id}/stale-assets")
+async def get_stale_assets_for_delta(
+    scan_id: UUID,
+    request_data: schemas.DeltaScanRequest,
+    db: AsyncSession = Depends(database.get_db),
+    _: bool = Depends(auth.verify_worker_token)  # Worker authentication
+):
+    """
+    Get assets that need to be scanned in delta mode.
+    Returns only assets that haven't been scanned within the threshold period.
+
+    Used by workers to filter out recently scanned assets.
+    """
+    scan = await ScanService.get_scan(db, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    stale_assets = await crud.get_stale_assets(
+        db,
+        scope_id=scan.scope_id,
+        threshold_hours=request_data.threshold_hours,
+        asset_values=request_data.asset_values
+    )
+
+    return {
+        "stale_assets": stale_assets,
+        "total_requested": len(request_data.asset_values) if request_data.asset_values else 0,
+        "stale_count": len(stale_assets)
+    }
+
+
+@router.post("/{scan_id}/mark-scanned")
+async def mark_assets_scanned(
+    scan_id: UUID,
+    request_data: schemas.MarkScannedRequest,
+    db: AsyncSession = Depends(database.get_db),
+    _: bool = Depends(auth.verify_worker_token)  # Worker authentication
+):
+    """
+    Mark assets as scanned after scan completion.
+    Updates last_scanned_at and increments scan_count.
+    """
+    scan = await ScanService.get_scan(db, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    for asset_value in request_data.asset_values:
+        await crud.mark_asset_scanned(db, scan.scope_id, asset_value)
+
+    return {"status": "ok", "marked_count": len(request_data.asset_values)}

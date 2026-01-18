@@ -96,6 +96,12 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
+    # Capabilities réseau nécessaires pour Naabu (SYN scan)
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "celery", "-A", "src.celery_app", "inspect", "ping", "-d", "celery@$$HOSTNAME"]
       interval: 30s
@@ -150,7 +156,7 @@ services:
       - flower_data:/data
     environment:
       - CELERY_BROKER_URL=${REDIS_URL:-redis://redis:6379/0}
-      # - FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH:-admin:admin} # Désactivé temporairement pour debug
+      - FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH:-admin:changeme}
     restart: unless-stopped
 
 volumes:

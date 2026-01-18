@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     
     # Backend
     BACKEND_URL: str = "http://backend:8000"
+
+    # Worker Authentication
+    WORKER_SECRET_TOKEN: str = "change-me-in-production-use-secrets-token-hex-32"
     
     # Notifications
     DISCORD_WEBHOOK_URL: Optional[str] = None
@@ -59,6 +62,18 @@ class Settings(BaseSettings):
             unsafe_defaults = ["changeme", "secret", "your-secret-key-here"]
             if any(default in v.lower() for default in unsafe_defaults):
                 raise ValueError("SECRET_KEY appears to be a default value.")
+        return v
+
+    @field_validator("WORKER_SECRET_TOKEN")
+    @classmethod
+    def validate_worker_token(cls, v, info):
+        values = info.data
+        if values.get("ENVIRONMENT") == "production":
+            if len(v) < 32:
+                raise ValueError("WORKER_SECRET_TOKEN must be at least 32 characters in production.")
+            unsafe_defaults = ["change-me", "changeme", "secret", "token"]
+            if any(default in v.lower() for default in unsafe_defaults):
+                raise ValueError("WORKER_SECRET_TOKEN appears to be a default value.")
         return v
 
     class Config:

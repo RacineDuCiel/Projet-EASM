@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Header
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import timedelta
+from typing import Optional
 from src.db import session as database
 from src import models, schemas, crud
 from src.core import security as auth
+from src.core.config import settings
 
 router = APIRouter(
     prefix="/auth",
@@ -14,6 +16,32 @@ router = APIRouter(
 )
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
+
+
+async def verify_worker_token(
+    x_worker_token: Optional[str] = Header(None, alias="X-Worker-Token")
+) -> bool:
+    """
+    Verify that the request comes from an authorized worker.
+    Workers must send the X-Worker-Token header with the secret token.
+
+    Raises HTTPException 401 if token is missing or invalid.
+    """
+    if not x_worker_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-Worker-Token header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if x_worker_token != settings.WORKER_SECRET_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid worker token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return True
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(database.get_db)):
     credentials_exception = HTTPException(

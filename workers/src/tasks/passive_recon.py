@@ -56,6 +56,7 @@ def passive_recon_orchestrator(target: str, scan_id: str, scan_config: Dict[str,
             tlsx_task.s(target, scan_id),
             security_headers_task.s(target, scan_id),
             favicon_hash_task.s(target, scan_id),
+            cloud_assets_task.s(target, scan_id),  # Cloud asset detection
         ]
 
         # Crawling and URL discovery (if enabled)
@@ -561,6 +562,70 @@ def censys_task(target: str, scan_id: str, api_id: str, api_secret: str) -> Dict
 
 
 # ============================================================================
+# CLOUD ASSET DETECTION
+# ============================================================================
+
+@app.task(
+    name='src.tasks.cloud_assets_task',
+    queue='discovery',
+    autoretry_for=(Exception,),
+    retry_kwargs={'max_retries': 1, 'countdown': 30},
+    retry_backoff=True
+)
+def cloud_assets_task(target: str, scan_id: str, subdomains: List[str] = None) -> Dict[str, Any]:
+    """
+    Detect cloud-hosted assets (S3, Azure Blob, GCP Storage, etc.).
+    Analyzes subdomains, DNS records, and certificates for cloud patterns.
+    """
+    from src.cloud_detection import enumerate_cloud_assets
+
+    log_event(scan_id, f"Detecting cloud assets for {target}")
+
+    try:
+        # Get subdomains if not provided
+        if subdomains is None:
+            subdomains = [target]
+
+        cloud_data = enumerate_cloud_assets(
+            domain=target,
+            subdomains=subdomains,
+            check_access=True  # Check if buckets are publicly accessible
+        )
+
+        if cloud_data and cloud_data.get("total_assets", 0) > 0:
+            post_to_backend(f"/scans/{scan_id}/passive-intel/cloud-assets", {
+                "asset_value": target,
+                "cloud_data": cloud_data
+            })
+
+            # Log summary
+            aws_count = cloud_data.get("aws", {}).get("count", 0)
+            azure_count = cloud_data.get("azure", {}).get("count", 0)
+            gcp_count = cloud_data.get("gcp", {}).get("count", 0)
+            public_count = len(cloud_data.get("public_assets", []))
+
+            log_event(
+                scan_id,
+                f"Cloud Assets: AWS={aws_count}, Azure={azure_count}, GCP={gcp_count}, Public={public_count}"
+            )
+
+            # Alert on public cloud assets
+            if public_count > 0:
+                log_event(
+                    scan_id,
+                    f"⚠️ Found {public_count} publicly accessible cloud storage assets!",
+                    "warning"
+                )
+
+        return {"cloud_assets": cloud_data, "target": target}
+
+    except Exception as e:
+        logger.error(f"Cloud asset detection failed for {target}: {e}")
+        log_event(scan_id, f"Cloud detection failed: {str(e)}", "warning")
+        return {"cloud_assets": {}, "target": target, "error": str(e)}
+
+
+# ============================================================================
 # FINALIZATION
 # ============================================================================
 
@@ -580,6 +645,13 @@ def finalize_passive_recon(results: list, target: str, scan_id: str) -> Dict[str
         "historical_urls_found": 0,
         "security_headers_score": None,
         "api_sources_used": [],
+        "cloud_assets": {
+            "total": 0,
+            "aws": 0,
+            "azure": 0,
+            "gcp": 0,
+            "public": 0,
+        },
     }
 
     for result in (results or []):
@@ -608,7 +680,20 @@ def finalize_passive_recon(results: list, target: str, scan_id: str) -> Dict[str
             summary["api_sources_used"].append("securitytrails")
         if result.get("censys") and result["censys"].get("services"):
             summary["api_sources_used"].append("censys")
+        if result.get("cloud_assets"):
+            cloud = result["cloud_assets"]
+            summary["cloud_assets"]["total"] = cloud.get("total_assets", 0)
+            summary["cloud_assets"]["aws"] = cloud.get("aws", {}).get("count", 0)
+            summary["cloud_assets"]["azure"] = cloud.get("azure", {}).get("count", 0)
+            summary["cloud_assets"]["gcp"] = cloud.get("gcp", {}).get("count", 0)
+            summary["cloud_assets"]["public"] = len(cloud.get("public_assets", []))
 
-    log_event(scan_id, f"Passive recon completed for {target}: {summary['endpoints_found']} endpoints, {summary['historical_urls_found']} URLs")
+    cloud_total = summary["cloud_assets"]["total"]
+    cloud_public = summary["cloud_assets"]["public"]
+    log_event(
+        scan_id,
+        f"Passive recon completed for {target}: {summary['endpoints_found']} endpoints, "
+        f"{summary['historical_urls_found']} URLs, {cloud_total} cloud assets ({cloud_public} public)"
+    )
 
     return {"status": "completed", "target": target, "summary": summary}

@@ -34,33 +34,43 @@ def port_scan_task(asset: Dict[str, Any], scan_id: str, scan_config: Dict = None
     log_event(scan_id, f"Starting port scan on {domain}...")
 
     try:
-        # If specific port is provided, skip Naabu discovery
+        open_ports = []
+
         if specific_port:
             logger.info(f"Using specific port {specific_port} for {domain} (skipping Naabu)")
             log_event(scan_id, f"Using specified port {specific_port} on {domain}")
             open_ports = [{
                 "port": specific_port,
                 "protocol": "tcp",
-                "service_name": "http"  # Assume HTTP for now
+                "service_name": "http"
             }]
         else:
-            # Run Naabu for port discovery
-            open_ports = tools.run_naabu(domain, ports=ports)
+            result = tools.run_naabu(domain, ports=ports or "")
+            if result.is_success:
+                open_ports = result.data.ports
+            else:
+                error_msg = result.error.message if result.error else "Unknown error"
+                logger.warning(f"Naabu failed: {error_msg}, using fallback ports")
+                open_ports = [
+                    {"port": 80, "protocol": "tcp", "service_name": "http"},
+                    {"port": 443, "protocol": "tcp", "service_name": "https"},
+                ]
 
         asset["services"] = open_ports
-
-        log_event(scan_id, f"Port scan finished on {domain}. Found {len(open_ports)} ports.")
+        port_count = len(open_ports)
+        log_event(scan_id, f"Port scan finished on {domain}. Found {port_count} ports.")
 
         if open_ports:
             try:
                 resp = post_to_backend(f"/scans/{scan_id}/assets", [asset])
                 resp.raise_for_status()
-                logger.info(f"Sent {len(open_ports)} services to backend for {domain}")
+                logger.info(f"Sent {port_count} services to backend for {domain}")
             except Exception as e:
                 logger.error(f"Error sending services for {domain}: {e}", exc_info=True)
                 raise
 
         return asset
+
     except Exception as e:
         logger.error(f"Port scan failed for {domain}: {e}", exc_info=True)
         log_event(scan_id, f"Port scan failed on {domain}: {str(e)}", "error")
@@ -144,6 +154,13 @@ def _report_tech_detection(domain: str, port: int, tech_info: Dict, scan_id: str
         tls_info = tech_info.get("tls", {})
         tls_version = tls_info.get("version") if isinstance(tls_info, dict) else None
 
+        response_time_ms = tech_info.get("response_time_ms")
+        if response_time_ms is not None and not isinstance(response_time_ms, (int, float)):
+            logger.warning(f"Invalid response_time_ms type for {domain}:{port}: {type(response_time_ms)}")
+            response_time_ms = None
+        elif response_time_ms is not None:
+            response_time_ms = int(response_time_ms)
+
         payload = {
             "asset_value": domain,
             "port": port,
@@ -151,7 +168,7 @@ def _report_tech_detection(domain: str, port: int, tech_info: Dict, scan_id: str
             "web_server": tech_info.get("web_server"),
             "waf_detected": tech_info.get("waf"),
             "tls_version": tls_version,
-            "response_time_ms": int(float(tech_info.get("response_time", 0)) * 1000) if tech_info.get("response_time") else None
+            "response_time_ms": response_time_ms
         }
 
         resp = post_to_backend(f"/scans/{scan_id}/tech-detect", payload)

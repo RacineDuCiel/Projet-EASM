@@ -41,6 +41,12 @@ services:
   worker_scan:
     restart: always
     volumes: []
+    # Capabilities réseau nécessaires pour Naabu (héritées mais explicites pour la prod)
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
 
   beat:
     restart: always

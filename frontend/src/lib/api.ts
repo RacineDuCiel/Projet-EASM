@@ -38,4 +38,17 @@ api.interceptors.response.use(
     }
 );
 
+// Security Posture API methods
+export const securityApi = {
+    // Compliance
+    analyzeCompliance: (data: any) => 
+        api.post('/security/compliance/analyze', data),
+    
+    getComplianceFrameworks: () => 
+        api.get('/security/compliance/frameworks'),
+    
+    generateReport: (data: any) => 
+        api.post('/security/compliance/report', data),
+};
+
 export default api;

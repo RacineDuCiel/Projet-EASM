@@ -18,19 +18,26 @@ from uuid import UUID
 
 @router.get("/", response_model=List[schemas.Asset])
 async def read_assets(
-    skip: int = 0, 
-    limit: int = 100, 
+    skip: int = 0,
+    limit: int = 100,
     scope_id: Optional[UUID] = None,
     db: AsyncSession = Depends(database.get_db),
     current_user: User = Depends(auth.get_current_user)
 ):
     if scope_id:
-        # If scope_id is provided, we must verify the user has access to it
-        # For now, we assume if they are in the program that owns the scope, it's fine.
-        # Ideally we should check if scope belongs to user's program.
+        # Verify user has access to this scope
+        scope = await crud.get_scope(db, scope_id)
+        if not scope:
+            raise HTTPException(status_code=404, detail="Scope not found")
+
+        # Non-admin users can only access scopes from their assigned program
         if current_user.role != "admin":
-             # TODO: Verify scope belongs to user's program
-             pass
+            if scope.program_id != current_user.program_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Not authorized to access assets from this scope"
+                )
+
         return await crud.get_assets_by_scope(db, scope_id=scope_id, skip=skip, limit=limit)
 
     if current_user.role == "admin":

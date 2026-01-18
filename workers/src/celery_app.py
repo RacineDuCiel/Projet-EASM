@@ -10,6 +10,7 @@ from src.core.logging import setup_logging, get_logger
 # Configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000/api/v1")
+WORKER_SECRET_TOKEN = os.getenv("WORKER_SECRET_TOKEN", "change-me-in-production-use-secrets-token-hex-32")
 
 app = Celery('easm_worker', broker=REDIS_URL, backend=REDIS_URL)
 

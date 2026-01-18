@@ -7,45 +7,446 @@ import socket
 import hashlib
 import base64
 import requests
+import time
 from typing import List, Dict, Any, Generator, Optional
 from datetime import datetime
 
+from src.validation import validate_input, InputType, ValidationError
+from src.result import (
+    ToolResult, ResultStatus, ErrorCategory,
+    success_result, error_result, timeout_result,
+    tool_missing_result, invalid_input_result, not_found_result,
+    SubdomainResult, PortScanResult, TechnologyResult,
+    VulnerabilityFinding, DNSRecordResult, CertificateResult
+)
+
+import re
+
 logger = logging.getLogger(__name__)
+
+
+def _parse_response_time(time_str) -> Optional[int]:
+    """Parse httpx response time string to milliseconds as int.
+
+    Handles various formats:
+    - '78.38318ms' -> 78 (value in ms, truncate decimals)
+    - '0.07838318s' -> 78 (value in seconds, multiply by 1000)
+    - '50' -> 50000 (raw number < 100, assume seconds, multiply by 1000)
+    - '500' -> 500 (raw number >= 100, assume milliseconds)
+    - 50.5 (float) -> 50500 (assume seconds if < 100)
+    - 500 (int) -> 500 (assume milliseconds)
+    """
+    if time_str is None:
+        return None
+    if isinstance(time_str, (int, float)):
+        if time_str < 100:
+            return int(time_str * 1000)
+        return int(time_str)
+    if not isinstance(time_str, str):
+        return None
+    time_str = time_str.strip()
+    if not time_str:
+        return None
+    try:
+        suffix = None
+        lower_str = time_str.lower()
+        if lower_str.endswith('ms'):
+            suffix = 'ms'
+        elif lower_str.endswith('s'):
+            suffix = 's'
+        cleaned = re.sub(r'[^\d.]', '', time_str)
+        if not cleaned:
+            logger.warning(f"Could not parse response time '{time_str}': no numeric value found")
+            return None
+        value = float(cleaned)
+        if suffix == 's':
+            return int(value * 1000)
+        if suffix == 'ms':
+            return int(value)
+        if value < 100:
+            return int(value * 1000)
+        return int(value)
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Could not parse response time '{time_str}': {e}")
+        return None
+
 
 def check_tool(tool_name: str) -> bool:
     """Check if a tool is installed and available in PATH."""
     return shutil.which(tool_name) is not None
 
-def run_subfinder(domain: str) -> List[str]:
+def run_subfinder(domain: str, timeout: int = 120) -> ToolResult[SubdomainResult]:
     """
     Runs subfinder to discover subdomains.
-    Returns a list of unique subdomains found.
+    Returns a ToolResult with SubdomainResult containing unique subdomains found.
     """
+    validation = validate_input(domain, InputType.DOMAIN)
+    if not validation.is_valid:
+        return invalid_input_result(
+            validation.error_message or "Invalid domain",
+            domain
+        )
+
     if not check_tool("subfinder"):
-        logger.error("Subfinder not found in PATH")
-        return []
+        return tool_missing_result("subfinder")
+
+    domain = validation.sanitized_value
+    start_time = time.time()
 
     logger.info(f"Running Subfinder on {domain}...")
+
     try:
         cmd = ["subfinder", "-d", domain, "-silent", "-all"]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=120)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=timeout)
+        duration_ms = int((time.time() - start_time) * 1000)
+
         subdomains = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-        logger.info(f"Subfinder found {len(subdomains)} subdomains for {domain}")
-        return list(set(subdomains))
+        unique_subdomains = list(set(subdomains))
+
+        logger.info(f"Subfinder found {len(unique_subdomains)} subdomains for {domain}")
+
+        return success_result(
+            SubdomainResult(
+                subdomains=unique_subdomains,
+                source="subfinder",
+                count=len(unique_subdomains),
+                duration_ms=duration_ms
+            )
+        )
+
     except subprocess.TimeoutExpired:
+        duration_ms = int((time.time() - start_time) * 1000)
         logger.error(f"Subfinder timed out on {domain}")
-        return []
+        return timeout_result(
+            f"Subfinder timed out after {timeout}s",
+            SubdomainResult(subdomains=[], source="subfinder", count=0, duration_ms=duration_ms)
+        )
+
     except subprocess.CalledProcessError as e:
         logger.error(f"Subfinder failed on {domain}: {e.stderr}")
-        return []
+        return error_result(
+            f"Subfinder failed: {e.stderr}",
+            ErrorCategory.SYSTEM,
+            "SUBFINDER_ERROR",
+            str(e)
+        )
+
     except Exception as e:
         logger.error(f"Unexpected error running Subfinder on {domain}: {e}")
-        return []
+        return error_result(
+            f"Unexpected error: {str(e)}",
+            ErrorCategory.CRITICAL,
+            "UNEXPECTED_ERROR",
+            str(e)
+        )
 
-def run_naabu(host: str, ports: str = None, rate_limit: str = None) -> List[Dict[str, Any]]:
+
+def run_amass(domain: str, timeout: int = 300, passive_only: bool = True) -> ToolResult[SubdomainResult]:
+    """
+    Runs Amass for subdomain enumeration.
+    More comprehensive than Subfinder but slower.
+
+    Args:
+        domain: Target domain
+        timeout: Maximum execution time in seconds
+        passive_only: If True, only use passive sources (faster, no DNS bruteforce)
+
+    Returns:
+        ToolResult with SubdomainResult containing unique subdomains found
+    """
+    validation = validate_input(domain, InputType.DOMAIN)
+    if not validation.is_valid:
+        return invalid_input_result(
+            validation.error_message or "Invalid domain",
+            domain
+        )
+
+    if not check_tool("amass"):
+        logger.warning("Amass not found in PATH, skipping")
+        return tool_missing_result("amass")
+
+    domain = validation.sanitized_value
+    start_time = time.time()
+
+    logger.info(f"Running Amass on {domain} (passive={passive_only})...")
+
+    try:
+        cmd = ["amass", "enum", "-d", domain, "-silent"]
+        if passive_only:
+            cmd.append("-passive")
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        subdomains = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        unique_subdomains = list(set(subdomains))
+
+        logger.info(f"Amass found {len(unique_subdomains)} subdomains for {domain}")
+
+        return success_result(
+            SubdomainResult(
+                subdomains=unique_subdomains,
+                source="amass",
+                count=len(unique_subdomains),
+                duration_ms=duration_ms
+            )
+        )
+
+    except subprocess.TimeoutExpired:
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.warning(f"Amass timed out on {domain} after {timeout}s")
+        return timeout_result(
+            f"Amass timed out after {timeout}s",
+            SubdomainResult(subdomains=[], source="amass", count=0, duration_ms=duration_ms)
+        )
+
+    except Exception as e:
+        logger.error(f"Amass failed on {domain}: {e}")
+        return error_result(
+            f"Amass failed: {str(e)}",
+            ErrorCategory.SYSTEM,
+            "AMASS_ERROR",
+            str(e)
+        )
+
+
+def run_findomain(domain: str, timeout: int = 120) -> ToolResult[SubdomainResult]:
+    """
+    Runs Findomain for fast subdomain enumeration.
+    Very fast tool that aggregates multiple sources.
+
+    Args:
+        domain: Target domain
+        timeout: Maximum execution time in seconds
+
+    Returns:
+        ToolResult with SubdomainResult containing unique subdomains found
+    """
+    validation = validate_input(domain, InputType.DOMAIN)
+    if not validation.is_valid:
+        return invalid_input_result(
+            validation.error_message or "Invalid domain",
+            domain
+        )
+
+    if not check_tool("findomain"):
+        logger.warning("Findomain not found in PATH, skipping")
+        return tool_missing_result("findomain")
+
+    domain = validation.sanitized_value
+    start_time = time.time()
+
+    logger.info(f"Running Findomain on {domain}...")
+
+    try:
+        cmd = ["findomain", "-t", domain, "-q"]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        subdomains = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        unique_subdomains = list(set(subdomains))
+
+        logger.info(f"Findomain found {len(unique_subdomains)} subdomains for {domain}")
+
+        return success_result(
+            SubdomainResult(
+                subdomains=unique_subdomains,
+                source="findomain",
+                count=len(unique_subdomains),
+                duration_ms=duration_ms
+            )
+        )
+
+    except subprocess.TimeoutExpired:
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.warning(f"Findomain timed out on {domain}")
+        return timeout_result(
+            f"Findomain timed out after {timeout}s",
+            SubdomainResult(subdomains=[], source="findomain", count=0, duration_ms=duration_ms)
+        )
+
+    except Exception as e:
+        logger.error(f"Findomain failed on {domain}: {e}")
+        return error_result(
+            f"Findomain failed: {str(e)}",
+            ErrorCategory.SYSTEM,
+            "FINDOMAIN_ERROR",
+            str(e)
+        )
+
+
+def run_assetfinder(domain: str, timeout: int = 60) -> ToolResult[SubdomainResult]:
+    """
+    Runs assetfinder for subdomain enumeration.
+    Fast and lightweight tool.
+
+    Args:
+        domain: Target domain
+        timeout: Maximum execution time in seconds
+
+    Returns:
+        ToolResult with SubdomainResult containing unique subdomains found
+    """
+    validation = validate_input(domain, InputType.DOMAIN)
+    if not validation.is_valid:
+        return invalid_input_result(
+            validation.error_message or "Invalid domain",
+            domain
+        )
+
+    if not check_tool("assetfinder"):
+        logger.warning("Assetfinder not found in PATH, skipping")
+        return tool_missing_result("assetfinder")
+
+    domain = validation.sanitized_value
+    start_time = time.time()
+
+    logger.info(f"Running Assetfinder on {domain}...")
+
+    try:
+        cmd = ["assetfinder", "--subs-only", domain]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        subdomains = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        subdomains = [s for s in subdomains if s.endswith(f".{domain}") or s == domain]
+        unique_subdomains = list(set(subdomains))
+
+        logger.info(f"Assetfinder found {len(unique_subdomains)} subdomains for {domain}")
+
+        return success_result(
+            SubdomainResult(
+                subdomains=unique_subdomains,
+                source="assetfinder",
+                count=len(unique_subdomains),
+                duration_ms=duration_ms
+            )
+        )
+
+    except subprocess.TimeoutExpired:
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.warning(f"Assetfinder timed out on {domain}")
+        return timeout_result(
+            f"Assetfinder timed out after {timeout}s",
+            SubdomainResult(subdomains=[], source="assetfinder", count=0, duration_ms=duration_ms)
+        )
+
+    except Exception as e:
+        logger.error(f"Assetfinder failed on {domain}: {e}")
+        return error_result(
+            f"Assetfinder failed: {str(e)}",
+            ErrorCategory.SYSTEM,
+            "ASSETFINDER_ERROR",
+            str(e)
+        )
+
+
+def aggregate_subdomain_discovery(
+    domain: str,
+    use_amass: bool = False,
+    use_findomain: bool = True,
+    use_assetfinder: bool = True,
+    parallel: bool = True
+) -> Dict[str, Any]:
+    """
+    Aggregate results from multiple subdomain enumeration tools.
+    Runs tools in parallel for faster results.
+
+    Args:
+        domain: Target domain
+        use_amass: Include Amass (slower but more comprehensive)
+        use_findomain: Include Findomain
+        use_assetfinder: Include Assetfinder
+        parallel: Run tools in parallel
+
+    Returns:
+        Dictionary with aggregated results and per-tool breakdown
+    """
+    import concurrent.futures
+
+    validation = validate_input(domain, InputType.DOMAIN)
+    if not validation.is_valid:
+        logger.error(f"Invalid domain for aggregation: {domain}")
+        return {
+            "domain": domain,
+            "subdomains": [],
+            "sources": {},
+            "total_unique": 0,
+            "error": validation.error_message
+        }
+
+    domain = validation.sanitized_value
+    logger.info(f"Starting aggregated subdomain discovery for {domain}")
+
+    results = {
+        "domain": domain,
+        "subdomains": set(),
+        "sources": {},
+        "total_unique": 0,
+    }
+
+    def run_tool_wrapper(tool_info):
+        name, func = tool_info
+        try:
+            result = func(domain)
+            if isinstance(result, ToolResult):
+                if result.is_success:
+                    return name, result.data.subdomains, None
+                else:
+                    return name, [], result.error.message if result.error else "Unknown error"
+            else:
+                return name, result, None
+        except Exception as e:
+            logger.error(f"Tool {name} failed: {e}")
+            return name, [], str(e)
+
+    tools_to_run = [("subfinder", run_subfinder)]
+
+    if use_findomain:
+        tools_to_run.append(("findomain", run_findomain))
+    if use_assetfinder:
+        tools_to_run.append(("assetfinder", run_assetfinder))
+    if use_amass:
+        tools_to_run.append(("amass", lambda d: run_amass(d, passive_only=True)))
+
+    if parallel and len(tools_to_run) > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [executor.submit(run_tool_wrapper, t) for t in tools_to_run]
+            for future in concurrent.futures.as_completed(futures):
+                name, subs, error = future.result()
+                if error:
+                    results["sources"][name] = {"count": 0, "error": error}
+                else:
+                    results["sources"][name] = {"count": len(subs)}
+                    results["subdomains"].update(subs)
+    else:
+        for tool_info in tools_to_run:
+            name, subs, error = run_tool_wrapper(tool_info)
+            if error:
+                results["sources"][name] = {"count": 0, "error": error}
+            else:
+                results["sources"][name] = {"count": len(subs)}
+                results["subdomains"].update(subs)
+
+    results["subdomains"] = list(results["subdomains"])
+    results["total_unique"] = len(results["subdomains"])
+
+    logger.info(
+        f"Aggregated discovery for {domain}: {results['total_unique']} unique subdomains "
+        f"from {len(results['sources'])} sources"
+    )
+
+    return results
+
+DEFAULT_SCAN_PORTS = os.getenv("SCAN_PORTS", "80,443,3000-3010,4200,5000-5010,8000-8010,8080-8090")
+DEFAULT_NAABU_RATE_LIMIT = os.getenv("NAABU_RATE_LIMIT", "1000")
+MAX_THREADPOOL_WORKERS = int(os.getenv("MAX_THREADPOOL_WORKERS", "4"))
+
+
+def run_naabu(host: str, ports: str = None, rate_limit: str = None) -> ToolResult[PortScanResult]:
     """
     Runs naabu to scan ports on a host.
-    Returns a list of open ports with metadata.
+    Returns a ToolResult with PortScanResult containing open ports metadata.
 
     Args:
         host: Target hostname or IP
@@ -53,8 +454,19 @@ def run_naabu(host: str, ports: str = None, rate_limit: str = None) -> List[Dict
         rate_limit: Scan rate limit
     """
     if not check_tool("naabu"):
-        logger.error("Naabu not found in PATH")
-        return []
+        return tool_missing_result("naabu")
+
+    validation = validate_input(host, InputType.DOMAIN)
+    if not validation.is_valid:
+        validation = validate_input(host, InputType.IP)
+        if not validation.is_valid:
+            return invalid_input_result(
+                validation.error_message or "Invalid host",
+                host
+            )
+
+    host = validation.sanitized_value
+    start_time = time.time()
 
     logger.info(f"Running Naabu on {host}...")
 
@@ -63,17 +475,22 @@ def run_naabu(host: str, ports: str = None, rate_limit: str = None) -> List[Dict
         logger.info(f"Resolved {host} to {ip_address}")
     except socket.gaierror as e:
         logger.error(f"Failed to resolve hostname {host}: {e}")
-        return []
+        return error_result(
+            f"Failed to resolve hostname: {str(e)}",
+            ErrorCategory.BUSINESS,
+            "DNS_RESOLUTION_FAILED",
+            str(e)
+        )
 
     try:
-        # Use provided params or fall back to env vars
-        ports = ports or os.getenv("NAABU_PORTS", "80,443,3000-3010,4200,5000-5010,8000-8010,8080-8090")
-        rate_limit = rate_limit or os.getenv("NAABU_RATE_LIMIT", "1000")
+        ports = ports or DEFAULT_SCAN_PORTS
+        rate_limit = rate_limit or DEFAULT_NAABU_RATE_LIMIT
 
         cmd = ["naabu", "-host", ip_address, "-json", "-p", ports, "-rate", rate_limit, "-silent"]
-        logger.debug(f"Executing Naabu command: {' '.join(cmd)}")
+        logger.debug(f"Executing Naabu command: [REDACTED]")
 
         result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=300)
+        duration_ms = int((time.time() - start_time) * 1000)
 
         open_ports = []
         for line in result.stdout.splitlines():
@@ -90,41 +507,99 @@ def run_naabu(host: str, ports: str = None, rate_limit: str = None) -> List[Dict
 
         if not open_ports:
              logger.warning(f"Naabu completed but found NO open ports on {host} ({ip_address})")
-        else:
-             logger.info(f"Naabu found {len(open_ports)} open ports on {host} ({ip_address})")
+             return not_found_result(
+                 "No open ports found",
+                 PortScanResult(host=host, ports=[], count=0, duration_ms=duration_ms)
+             )
 
-        return open_ports
+        logger.info(f"Naabu found {len(open_ports)} open ports on {host} ({ip_address})")
+
+        return success_result(
+            PortScanResult(
+                host=host,
+                ports=open_ports,
+                count=len(open_ports),
+                duration_ms=duration_ms
+            )
+        )
+
     except subprocess.TimeoutExpired:
+        duration_ms = int((time.time() - start_time) * 1000)
         logger.error(f"Naabu timed out on {host}")
-        return []
+        return timeout_result(
+            "Naabu timed out after 300s",
+            PortScanResult(host=host, ports=[], count=0, duration_ms=duration_ms)
+        )
+
     except subprocess.CalledProcessError as e:
         logger.error(f"Naabu failed on {host}: {e.stderr}")
-        return []
+        return error_result(
+            f"Naabu failed: {e.stderr}",
+            ErrorCategory.SYSTEM,
+            "NAABU_ERROR",
+            str(e)
+        )
+
     except Exception as e:
         logger.error(f"Unexpected error running Naabu on {host}: {e}")
-        return []
+        return error_result(
+            f"Unexpected error: {str(e)}",
+            ErrorCategory.CRITICAL,
+            "UNEXPECTED_ERROR",
+            str(e)
+        )
 
-def run_nuclei(target: str) -> Generator[Dict[str, Any], None, None]:
+DEFAULT_NUCLEI_TIMEOUT_TOTAL = int(os.getenv("NUCLEI_TIMEOUT_TOTAL", "600"))
+DEFAULT_NUCLEI_RATE_LIMIT = os.getenv("NUCLEI_RATE_LIMIT", "150")
+DEFAULT_NUCLEI_TIMEOUT = os.getenv("NUCLEI_TIMEOUT", "5")
+DEFAULT_NUCLEI_RETRIES = os.getenv("NUCLEI_RETRIES", "1")
+DEFAULT_NUCLEI_SEVERITY = os.getenv("NUCLEI_SEVERITY", "info,low,medium,high,critical")
+
+
+def run_nuclei(
+    target: str,
+    tags: str = None,
+    severity: str = None,
+    rate_limit: str = None,
+    timeout: str = None,
+    retries: str = None,
+    timeout_total: int = None
+) -> Generator[Dict[str, Any], None, None]:
     """
     Runs Nuclei to scan for vulnerabilities.
+    Unified function replacing run_nuclei and run_nuclei_with_tags.
     Yields findings (vulnerabilities) as they are found.
-    
-    Includes a global timeout protection to prevent indefinite blocking.
+
+    Args:
+        target: Target URL or hostname
+        tags: Comma-separated Nuclei template tags (if None, runs all templates)
+        severity: Severity filter
+        rate_limit: Request rate limit
+        timeout: Per-request timeout
+        retries: Number of retries
+        timeout_total: Global timeout for entire scan (default: 600s)
     """
     if not check_tool("nuclei"):
         logger.error("Nuclei not found in PATH")
         return
 
-    # Global timeout for entire Nuclei scan (default: 10 minutes)
-    NUCLEI_TIMEOUT_TOTAL = int(os.getenv("NUCLEI_TIMEOUT_TOTAL", "600"))
-    
+    validation = validate_input(target, InputType.URL)
+    if not validation.is_valid:
+        validation = validate_input(target, InputType.DOMAIN)
+        if not validation.is_valid:
+            logger.error(f"Invalid target for Nuclei: {target}")
+            return
+
+    target = validation.sanitized_value
+    NUCLEI_TIMEOUT_TOTAL = timeout_total or DEFAULT_NUCLEI_TIMEOUT_TOTAL
+
     logger.info(f"Running Nuclei on {target} (max {NUCLEI_TIMEOUT_TOTAL}s)...")
-    
-    rate_limit = os.getenv("NUCLEI_RATE_LIMIT", "150")
-    timeout = os.getenv("NUCLEI_TIMEOUT", "5")
-    retries = os.getenv("NUCLEI_RETRIES", "1")
-    severity = os.getenv("NUCLEI_SEVERITY", "info,low,medium,high,critical")
-    
+
+    severity = severity or DEFAULT_NUCLEI_SEVERITY
+    rate_limit = rate_limit or DEFAULT_NUCLEI_RATE_LIMIT
+    timeout = timeout or DEFAULT_NUCLEI_TIMEOUT
+    retries = retries or DEFAULT_NUCLEI_RETRIES
+
     cmd = [
         "nuclei",
         "-u", target,
@@ -135,26 +610,28 @@ def run_nuclei(target: str) -> Generator[Dict[str, Any], None, None]:
         "-timeout", timeout,
         "-retries", retries
     ]
-    logger.debug(f"Executing Nuclei command: {' '.join(cmd)}")
-    
+
+    if tags:
+        cmd.extend(["-tags", tags])
+
+    logger.debug(f"Executing Nuclei command: [REDACTED]")
+
     process = None
     try:
-        # Use Popen to stream output
         process = subprocess.Popen(
-            cmd, 
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.PIPE, 
-            text=True, 
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
             bufsize=1
         )
-        
+
         import threading
         import queue
-        
-        # Queue to collect findings from reader thread
+
         findings_queue: queue.Queue = queue.Queue()
         reader_error: List[Exception] = []
-        
+
         def read_output():
             """Thread function to read Nuclei output."""
             try:
@@ -168,7 +645,10 @@ def run_nuclei(target: str) -> Generator[Dict[str, Any], None, None]:
                                 "title": data.get("info", {}).get("name"),
                                 "severity": normalize_severity(data.get("info", {}).get("severity")),
                                 "description": data.get("info", {}).get("description"),
-                                "status": "open"
+                                "status": "open",
+                                "matched": data.get("matched-at", ""),
+                                "template_id": data.get("template-id", ""),
+                                "tags": data.get("info", {}).get("tags", []),
                             }
                             findings_queue.put(finding)
                         except json.JSONDecodeError:
@@ -176,18 +656,16 @@ def run_nuclei(target: str) -> Generator[Dict[str, Any], None, None]:
             except Exception as e:
                 reader_error.append(e)
             finally:
-                findings_queue.put(None)  # Signal end of output
-        
-        # Start reader thread
+                findings_queue.put(None)
+
         reader_thread = threading.Thread(target=read_output, daemon=True)
         reader_thread.start()
-        
-        # Yield findings with timeout protection
-        start_time = __import__('time').time()
+
+        start_time = time.time()
         while True:
-            elapsed = __import__('time').time() - start_time
+            elapsed = time.time() - start_time
             remaining_timeout = max(0.1, NUCLEI_TIMEOUT_TOTAL - elapsed)
-            
+
             if elapsed >= NUCLEI_TIMEOUT_TOTAL:
                 logger.error(f"Nuclei global timeout ({NUCLEI_TIMEOUT_TOTAL}s) reached on {target}")
                 process.terminate()
@@ -196,16 +674,14 @@ def run_nuclei(target: str) -> Generator[Dict[str, Any], None, None]:
                 except subprocess.TimeoutExpired:
                     process.kill()
                 break
-            
+
             try:
                 finding = findings_queue.get(timeout=min(1.0, remaining_timeout))
-                if finding is None:  # End signal
+                if finding is None:
                     break
                 yield finding
             except queue.Empty:
-                # Check if process is still running
                 if process.poll() is not None:
-                    # Process finished, drain remaining queue
                     while True:
                         try:
                             finding = findings_queue.get_nowait()
@@ -215,18 +691,16 @@ def run_nuclei(target: str) -> Generator[Dict[str, Any], None, None]:
                         except queue.Empty:
                             break
                     break
-        
-        # Wait for reader thread to complete
+
         reader_thread.join(timeout=5)
-        
-        # Check for errors
+
         if reader_error:
             logger.error(f"Nuclei reader error on {target}: {reader_error[0]}")
-        
+
         stderr = process.stderr.read() if process.stderr else ""
         if process.returncode and process.returncode != 0 and stderr:
             logger.error(f"Nuclei process error on {target}: {stderr}")
-            
+
     except Exception as e:
         logger.error(f"Nuclei failed on {target}: {e}")
     finally:
@@ -236,6 +710,40 @@ def run_nuclei(target: str) -> Generator[Dict[str, Any], None, None]:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
+
+
+def run_nuclei_with_tags(
+    target: str,
+    tags: str = None,
+    severity: str = None,
+    rate_limit: str = None,
+    timeout: str = None,
+    retries: str = None
+) -> Generator[Dict[str, Any], None, None]:
+    """
+    Enhanced Nuclei function with tag-based filtering and configurable parameters.
+    Now delegates to unified run_nuclei function.
+
+    Args:
+        target: Target URL
+        tags: Comma-separated Nuclei template tags (if None, runs all templates)
+        severity: Severity filter
+        rate_limit: Request rate limit
+        timeout: Per-request timeout
+        retries: Number of retries
+    """
+    tags_info = f"tags={tags}" if tags else "all templates"
+    logger.info(f"Running Nuclei on {target} ({tags_info})...")
+
+    yield from run_nuclei(
+        target=target,
+        tags=tags,
+        severity=severity,
+        rate_limit=rate_limit,
+        timeout=timeout,
+        retries=retries
+    )
+
 
 def normalize_severity(severity: str) -> str:
     """Normalizes Nuclei severity to match backend Enum."""
@@ -318,7 +826,7 @@ def run_httpx(target: str, port: int = None) -> Dict[str, Any]:
                     "web_server": data.get("webserver"),
                     "status_code": data.get("status_code"),
                     "content_length": data.get("content_length"),
-                    "response_time": data.get("time"),
+                    "response_time_ms": _parse_response_time(data.get("time")),
                     "tls": data.get("tls", {}),
                     "waf": data.get("waf"),
                     "cdn": data.get("cdn"),

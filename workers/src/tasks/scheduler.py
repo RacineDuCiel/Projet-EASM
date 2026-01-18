@@ -1,9 +1,9 @@
-import requests
 import logging
-from src.celery_app import app, BACKEND_URL
-from src.utils import HTTP_TIMEOUT
+from src.celery_app import app
+from src.utils import post_to_backend, HTTP_TIMEOUT
 
 logger = logging.getLogger(__name__)
+
 
 @app.task(name='src.tasks.trigger_scheduled_scans')
 def trigger_scheduled_scans():
@@ -12,10 +12,7 @@ def trigger_scheduled_scans():
     """
     logger.info("Checking for scheduled scans...")
     try:
-        resp = requests.post(
-            f"{BACKEND_URL}/scans/check-schedules",
-            timeout=HTTP_TIMEOUT
-        )
+        resp = post_to_backend("/scans/check-schedules", {}, timeout=HTTP_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
         logger.info(f"Scheduled scans check completed. Triggered: {len(data.get('triggered_scans', []))}")

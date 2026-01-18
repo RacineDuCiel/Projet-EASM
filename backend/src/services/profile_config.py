@@ -2,6 +2,7 @@
 Profile configuration definitions and builders.
 Central place defining what each profile does.
 """
+import os
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
 from src.models.enums import ScanProfile, ScanPhase, AssetCriticality
@@ -38,7 +39,7 @@ class ProfileConfig:
 # Port presets - reusable across profiles
 PORT_PRESETS = {
     "minimal": "80,443",
-    "standard": "80,443,8080,8443",
+    "standard": "80,443,8000-8010,8080,8443",
     "extended": "21,22,23,25,53,80,110,135,139,143,443,445,993,995,1723,3306,3389,5432,5900,8000-8010,8080-8090,8443,9000-9010",
     "full": "1-65535"
 }
@@ -169,7 +170,7 @@ def build_profile_config(
         phases = [p for p in phases if p != ScanPhase.deep_analysis]
 
     # Apply program overrides
-    ports = program_overrides.get("custom_ports") or PORT_PRESETS.get(port_preset, PORT_PRESETS["standard"])
+    ports = program_overrides.get("custom_ports") or os.getenv("SCAN_PORTS") or PORT_PRESETS.get(port_preset, PORT_PRESETS["standard"])
     rate_limit = program_overrides.get("nuclei_rate_limit") or rate_limit
     timeout = program_overrides.get("nuclei_timeout") or timeout
 

@@ -104,6 +104,23 @@ export default function ScansPage() {
         }
     };
 
+    const formatDuration = (start: string, end: string | null) => {
+        if (!end) return '-';
+        const diffInSeconds = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000);
+        
+        if (diffInSeconds < 60) return `${diffInSeconds}s`;
+        
+        const hours = Math.floor(diffInSeconds / 3600);
+        const minutes = Math.floor((diffInSeconds % 3600) / 60);
+        const seconds = diffInSeconds % 60;
+
+        if (hours > 0) {
+            return `${hours}h ${minutes > 0 ? `${minutes}m ` : ''}${seconds > 0 ? `${seconds}s` : ''}`.trim();
+        }
+        
+        return `${minutes}m ${seconds > 0 ? `${seconds}s` : ''}`.trim();
+    };
+
     const getStatusColor = (status: string) => {
         switch (status) {
             case 'completed': return 'bg-green-100 text-green-800 hover:bg-green-100';
@@ -198,7 +215,9 @@ export default function ScansPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {scans?.map((scan) => (
+                                {[...(scans || [])]
+                                    .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
+                                    .map((scan) => (
                                     <TableRow key={scan.id}>
                                         <TableCell className="font-medium">
                                             {allScopes.find(s => s.id === scan.scope_id)?.value || scan.scope_id}
@@ -232,9 +251,7 @@ export default function ScansPage() {
                                             {format(new Date(scan.started_at), 'MMM d, yyyy HH:mm')}
                                         </TableCell>
                                         <TableCell>
-                                            {scan.completed_at ?
-                                                `${Math.round((new Date(scan.completed_at).getTime() - new Date(scan.started_at).getTime()) / 1000)}s`
-                                                : '-'}
+                                            {formatDuration(scan.started_at, scan.completed_at)}
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex justify-end gap-2">
