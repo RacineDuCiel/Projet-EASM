@@ -186,6 +186,3 @@ Les variables suivantes peuvent être configurées dans le fichier `.env` :
 | `HACKERTARGET_API_KEY` | Clé API HackerTarget (globale). | - |
 
 Les clés API par programme (configurables dans l'interface) priment sur les clés globales.
-| **waybackurls** | URLs historiques. |
-| **gau** | Agrégation d'URLs. |
-| **crt.sh** | Certificats via Certificate Transparency. |
