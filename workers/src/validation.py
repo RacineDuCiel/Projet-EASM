@@ -3,6 +3,8 @@ Input validation utilities for EASM workers.
 Prevents command injection and ensures data integrity.
 """
 import re
+import ipaddress
+from urllib.parse import urlparse
 from typing import Optional
 from dataclasses import dataclass
 from enum import Enum
@@ -102,34 +104,72 @@ def _validate_domain(value: str, allow_wildcard: bool) -> ValidationResult:
 
 
 def _validate_ip(value: str) -> ValidationResult:
-    if IPV4_REGEX.match(value):
-        parts = value.split('.')
-        if all(0 <= int(p) <= 255 for p in parts):
-            return ValidationResult(is_valid=True, value=value, sanitized_value=value)
-    
-    if IPV6_REGEX.match(value):
-        return ValidationResult(is_valid=True, value=value, sanitized_value=value)
-    
-    return ValidationResult(
-        is_valid=False,
-        value=value,
-        error_message=f"Invalid IP address format: {value}"
-    )
+    """
+    Validate IP address using stdlib ipaddress module.
+    Supports both IPv4 and IPv6, including compressed formats (::1, 2001:db8::1).
+    """
+    try:
+        # ipaddress.ip_address handles both IPv4 and IPv6, including compressed formats
+        ip_obj = ipaddress.ip_address(value)
+        # Normalize the IP address (expands IPv6, removes leading zeros)
+        normalized = str(ip_obj)
+        return ValidationResult(
+            is_valid=True,
+            value=value,
+            sanitized_value=normalized
+        )
+    except ValueError:
+        return ValidationResult(
+            is_valid=False,
+            value=value,
+            error_message=f"Invalid IP address format: {value}"
+        )
 
 
 def _validate_url(value: str) -> ValidationResult:
-    if not URL_REGEX.match(value):
+    """
+    Validate URL using urllib.parse for comprehensive format support.
+    Supports ports, query strings, fragments, underscores in hostnames.
+    """
+    try:
+        parsed = urlparse(value)
+        
+        # Must have http or https scheme
+        if parsed.scheme not in ('http', 'https'):
+            return ValidationResult(
+                is_valid=False,
+                value=value,
+                error_message=f"URL must use http or https scheme: {value}"
+            )
+        
+        # Must have a valid netloc (hostname)
+        if not parsed.netloc:
+            return ValidationResult(
+                is_valid=False,
+                value=value,
+                error_message=f"URL must have a valid hostname: {value}"
+            )
+        
+        # Basic hostname validation (no spaces, control chars)
+        hostname = parsed.hostname or ''
+        if not hostname or ' ' in hostname or any(ord(c) < 32 for c in hostname):
+            return ValidationResult(
+                is_valid=False,
+                value=value,
+                error_message=f"Invalid hostname in URL: {value}"
+            )
+        
+        return ValidationResult(
+            is_valid=True,
+            value=value,
+            sanitized_value=value
+        )
+    except Exception:
         return ValidationResult(
             is_valid=False,
             value=value,
             error_message=f"Invalid URL format: {value}"
         )
-    
-    return ValidationResult(
-        is_valid=True,
-        value=value,
-        sanitized_value=value
-    )
 
 
 def _validate_port(value: str) -> ValidationResult:

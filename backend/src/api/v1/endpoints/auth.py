@@ -1,3 +1,4 @@
+import secrets
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +35,8 @@ async def verify_worker_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if x_worker_token != settings.WORKER_SECRET_TOKEN:
+    # Use timing-safe comparison to prevent timing attacks
+    if not secrets.compare_digest(x_worker_token, settings.WORKER_SECRET_TOKEN):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid worker token",
