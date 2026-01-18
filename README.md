@@ -1,41 +1,24 @@
-# EASM Platform (External Attack Surface Management)
+# EASM (External Attack Surface Management)
 
 Plateforme complète de gestion de la surface d'attaque externe, conçue pour automatiser la découverte, le scan et la surveillance des actifs exposés (domaines, sous-domaines, IPs, services) et détecter les vulnérabilités.
 
 ## Fonctionnalités
 
-### Reconnaissance & Découverte
-
-- **Énumération Passive** : Utilisation de **Subfinder** pour agréger les sous-domaines depuis de multiples sources publiques (OSINT) sans interagir directement avec la cible. Agrégation également via Findomain, Assetfinder et Amass.
-- **Résolution DNS** : Vérification active de l'existence des sous-domaines et résolution des adresses IP via **dnsx**.
-- **Gestion des Wildcards** : Détection et filtrage intelligent des environnements wildcard pour éviter les faux positifs.
-- **Scope Management** : Définition précise des périmètres (domaines racines, exclusions, hostnames, plages IP) pour cibler uniquement les actifs autorisés. Support de la syntaxe Cible:Port pour les scans dirigés.
-- **Énumération Cloud** : Détection automatique des actifs cloud (S3, Azure Blob, GCP Storage) avec vérification de l'accessibilité publique.
-
 ### Profils de Scan
 
-La plateforme propose quatre profils de scan adaptés à différents besoins :
-
-| Profil | Description | Phases | Durée Estimée |
-|--------|-------------|--------|---------------|
-| **Discovery** | Reconnaissance passive uniquement. Découvre les actifs sans scan actif. | asset_discovery | 2-5 min |
-| **Quick Assessment** | Scan rapide pour vulnérabilités basiques. 80% des vulns en 20% du temps. | asset_discovery, service_enumeration, tech_detection, vuln_assessment | 5-15 min |
-| **Standard Assessment** | Approche équilibrée. Recommandé pour la plupart des cas. | asset_discovery, service_enumeration, tech_detection, vuln_assessment | 15-45 min |
-| **Full Audit** | Scan exhaustif. Tous les templates Nuclei et recon passive étendue. | asset_discovery, service_enumeration, tech_detection, vuln_assessment, deep_analysis | 1-4 heures |
-
-Chaque profil configure automatiquement :
-- Les phases de scan à exécuter
-- Les ports à scanner (presets: minimal, standard, étendu, full)
-- Les paramètres Nuclei (rate-limit, timeout, retries)
-- Le mode de templates (prioritaires uniquement ou complets)
-- L'intégration avec les API externes
+| Profil | Description | Durée Estimée |
+|--------|-------------|---------------|
+| **Discovery** | Reconnaissance passive uniquement | 2-5 min |
+| **Quick Assessment** | Scan rapide pour vulnérabilités les plus évidentes (80% des vulns en 20% du temps) | 5-15 min |
+| **Standard Assessment** | Approche équilibrée | 15-45 min |
+| **Full Audit** | Scan exhaustif : tous les templates Nuclei + recon passive étendue. | 1-4 heures |
 
 ### Phases de Scan
 
 Les scans s'exécutent en cinq phases distinctes :
 
 1. **Asset Discovery** : Découverte des sous-domaines via Subfinder et outils complémentaires.
-2. **Service Enumeration** : Port scanning ultra-rapide via **Naabu** pour identifier les services exposés. Support des ports spécifiques par cible.
+2. **Service Enumeration** : Port scanning ultra-rapide via **Naabu** pour identifier les services exposés.
 3. **Technology Detection** : Analyse des technologies détectées sur chaque port via **httpx**. Identification du serveur web, du WAF, des technologies applicatives (CMS, frameworks, bibliothèques) et du TLS.
 4. **Vulnerability Assessment** : Scan de vulnérabilités ciblé via **Nuclei** avec templates prioritaires basés sur les technologies détectées.
 5. **Deep Analysis** : Scan compréhensif avec l'ensemble des templates Nuclei pour découvrir des vulnérabilités additionnelles.
@@ -98,14 +81,14 @@ Analyse des vulnérabilités détectées contre les cadres de conformité :
 - **NIST CSF 2.0** : 35 fonctions et catégories (Govern, Identify, Protect, Detect, Respond, Recover).
 - **PCI-DSS 4.0** : 31 exigences pour la protection des données de paiement.
 
-Pour chaque vulnérabilité détectée, la plateforme identifie automatiquement les contrôles affectés et calcule un score de conformité par cadre.
+Pour chaque vulnérabilité détectée, la plateforme identifie automatiquement les contrôles affectés et calcule un score de conformité pour chaque cadre.
 
 ### Notifications & Automatisation
 
 - **Discord Webhooks** : Alerting en temps réel lors de la découverte de vulnérabilités critiques.
-- **Scheduled Scans** : Planification automatique des analyses selon une fréquence configurable (daily, weekly, monthly) via Celery Beat.
+- **Scheduled Scans** : Planification automatique des analyses selon une fréquence configurable via Celery Beat.
 - **Scan Resumption** : Reprise automatique des scans interrompus par un crash ou un arrêt inopiné de la plateforme.
-- **Rate Limiting** : Protection de l'API contre les abus avec limites adaptatives (dev: 1000/h, prod: 100/h).
+- **Rate Limiting** : Protection de l'API contre les abus avec limites adaptatives.
 
 ## Architecture Technique
 
@@ -203,18 +186,6 @@ Les variables suivantes peuvent être configurées dans le fichier `.env` :
 | `HACKERTARGET_API_KEY` | Clé API HackerTarget (globale). | - |
 
 Les clés API par programme (configurables dans l'interface) priment sur les clés globales.
-
-## Outils Intégrés
-
-| Outil | Rôle |
-|-------|------|
-| **Subfinder** | Découverte passive de sous-domaines. |
-| **Naabu** | Port scanning rapide. |
-| **Nuclei** | Scan de vulnérabilités avec templates. |
-| **dnsx** | Résolution DNS multiple. |
-| **httpx** | Détection technologies et analyse HTTP. |
-| **tlsx** | Analyse certificats TLS. |
-| **katana** | Crawling web pour endpoints. |
 | **waybackurls** | URLs historiques. |
 | **gau** | Agrégation d'URLs. |
 | **crt.sh** | Certificats via Certificate Transparency. |
