@@ -15,7 +15,7 @@ Plateforme complète de gestion de la surface d'attaque externe, conçue pour au
 
 ### Phases de scan
 
-Les scans s'exécutent en plusieurs phases séquentielles :
+Les scans s'exécutent en plusieurs phases :
 
 1. **Asset Discovery** : Découverte des sous-domaines via **Subfinder** et outils complémentaires (amass, assetfinder...).
 
@@ -31,7 +31,7 @@ Les scans s'exécutent en plusieurs phases séquentielles :
 
 ### Passive Intelligence
 
-Collecte étendue de données OSINT pour chaque actif :
+Collecte de données OSINT pour chaque actif :
 
 - **DNS Records** : Énumération complète des enregistrements A, AAAA, MX, TXT, NS, SOA, CNAME, PTR via dnsx.
 - **WHOIS** : Informations d'enregistrement de domaine (registrar, dates, serveurs de noms, registrant).
@@ -46,14 +46,12 @@ Collecte étendue de données OSINT pour chaque actif :
 
 #### API Intégrations (Optionnel)
 
-Intégration avec les services de renseignement payant :
+Intégration avec des services de renseignement payant :
 
 - **Shodan** : Données d'infrastructure, ports ouverts, vulnérabilités, tags.
 - **SecurityTrails** : Historique DNS et sous-domaines découverts.
 - **Censys** : Données de certificats et services détectés.
 - **HackerTarget** : Outils de reconnaissance gratuits (API free tier).
-
-Chaque programme peut configurer ses propres clés API, chiffrées au repos avec Fernet.
 
 ### Gestion & Suivi (Dashboard)
 
@@ -67,8 +65,6 @@ Chaque programme peut configurer ses propres clés API, chiffrées au repos avec
 - **Export CSV** : Export des vulnérabilités au format CSV pour analyse externe.
 
 ### Compliance Mapping (BETA)
-
-Analyse des vulnérabilités détectées contre les cadres de conformité :
 
 - **ISO 27001:2022** : 14 contrôles couvrant les aspects organisationnels et technologiques.
 - **SOC 2 Type II** : 16 critères relatifs à l'environnement de contrôle, la sécurité, la disponibilité et la confidentialité.
@@ -113,8 +109,6 @@ Le projet repose sur une architecture micro-services conteneurisée :
 - **Make** (optionnel mais recommandé pour utiliser les commandes simplifiées).
 
 ## Installation & Démarrage Rapide
-
-La procédure a été simplifiée pour un démarrage en une seule commande.
 
 1. **Cloner le projet** :
    ```bash
