@@ -72,7 +72,7 @@ Chaque programme peut configurer ses propres clés API, chiffrées au repos avec
 - **Reporting** : Visualisation détaillée des vulnérabilités avec preuves (requête/réponse HTTP) et suggestions de remédiation.
 - **Export CSV** : Export des vulnérabilités au format CSV pour analyse externe.
 
-### Compliance Mapping
+### Compliance Mapping (BETA)
 
 Analyse des vulnérabilités détectées contre les cadres de conformité :
 
@@ -81,7 +81,7 @@ Analyse des vulnérabilités détectées contre les cadres de conformité :
 - **NIST CSF 2.0** : 35 fonctions et catégories (Govern, Identify, Protect, Detect, Respond, Recover).
 - **PCI-DSS 4.0** : 31 exigences pour la protection des données de paiement.
 
-Pour chaque vulnérabilité détectée, la plateforme identifie automatiquement les contrôles affectés et calcule un score de conformité pour chaque cadre.
+Pour chaque vulnérabilité détectée, la plateforme identifie automatiquement les contrôles affectés et calcule un score de conformité.
 
 ### Notifications & Automatisation
 
@@ -186,3 +186,21 @@ Les variables suivantes peuvent être configurées dans le fichier `.env` :
 | `HACKERTARGET_API_KEY` | Clé API HackerTarget (globale). | - |
 
 Les clés API par programme (configurables dans l'interface) priment sur les clés globales.
+
+## Captures d'Écran
+
+### Dashboard Administrateur
+![Dashboard Admin](docs/images/dashboard-admin.png)
+*Vue administrateur avec statistiques globales et logs système en temps réel*
+
+### Dashboard Utilisateur
+![Dashboard User](docs/images/dashboard-user.png)
+*Interface utilisateur avec statistiques détaillées du scope assigné, actifs découverts et suivi des vulnérabilités*
+
+### Configuration & Paramètres
+![Settings](docs/images/settings.png)
+*Gestion des scans automatiques et des notifications*
+
+### Exemple de Scan
+![Scan Example](docs/images/scan-exemple.png)
+*Résultats détaillés d'un scan : technologies identifiées et vulnérabilités détectées (avec sévérité)* 
