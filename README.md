@@ -13,15 +13,21 @@ Plateforme complète de gestion de la surface d'attaque externe, conçue pour au
 | **Standard Assessment** | Approche équilibrée | 15-45 min |
 | **Full Audit** | Scan exhaustif : tous les templates Nuclei + recon passive étendue. | 1-4 heures |
 
-### Phases de Scan
+### Phases de scan
 
-Les scans s'exécutent en cinq phases distinctes :
+Les scans s'exécutent en plusieurs phases séquentielles :
 
-1. **Asset Discovery** : Découverte des sous-domaines via Subfinder et outils complémentaires.
-2. **Service Enumeration** : Port scanning ultra-rapide via **Naabu** pour identifier les services exposés.
-3. **Technology Detection** : Analyse des technologies détectées sur chaque port via **httpx**. Identification du serveur web, du WAF, des technologies applicatives (CMS, frameworks, bibliothèques) et du TLS.
-4. **Vulnerability Assessment** : Scan de vulnérabilités ciblé via **Nuclei** avec templates prioritaires basés sur les technologies détectées.
-5. **Deep Analysis** : Scan compréhensif avec l'ensemble des templates Nuclei pour découvrir des vulnérabilités additionnelles.
+1. **Asset Discovery** : Découverte des sous-domaines via **Subfinder** et outils complémentaires (amass, assetfinder...).
+
+2. **Service Enumeration** : Port scanning ultra-rapide via **Naabu** pour identifier les services exposés sur les actifs découverts.
+
+3. **Technology Detection** : Analyse des services via **httpx** pour identifier les technologies (serveur web, WAF, CMS, frameworks, bibliothèques JS) et configuration TLS/SSL.
+
+4. **Vulnerability Assessment** : Scan ciblé via **Nuclei** avec templates prioritaires sélectionnés dynamiquement selon les technologies détectées (CVEs connues, misconfigurations, fichiers exposés, panels admin, vulnérabilités web classiques).
+
+5. **Deep Analysis** *(Full Audit uniquement)* : Scan exhaustif avec l'ensemble des templates Nuclei communautaires pour une couverture maximale.
+
+**Streaming Temps Réel** : Les vulnérabilités sont transmises instantanément au backend dès leur découverte pour un affichage live dans le dashboard.
 
 ### Passive Intelligence
 
@@ -49,18 +55,6 @@ Intégration avec les services de renseignement payant :
 
 Chaque programme peut configurer ses propres clés API, chiffrées au repos avec Fernet.
 
-### Scanning de Vulnérabilités
-
-- **Port Scanning** : Scan ultra-rapide des ports via **Naabu** pour identifier les services exposés.
-- **Templates Nuclei** : Orchestration de **Nuclei** avec templates communautaires et personnalisés pour détecter :
-  - Mauvaises configurations (Headers, SSL/TLS).
-  - CVEs connues et critiques.
-  - Fichiers exposés et panels d'administration.
-  - Vulnérabilités Web (SQLi, XSS, RCE, SSRF, etc.).
-- **Prioritisation** : Les templates Nuclei sont sélectionnés dynamiquement en fonction des technologies détectées pour optimiser la couverture.
-- **Sévérité** : Classification automatique des vulnérabilités (Info, Low, Medium, High, Critical).
-- **Streaming Temps Réel** : Les vulnérabilités sont transférées instantanément vers le backend au fur et à mesure de leur découverte, permettant un affichage en temps réel dans le dashboard.
-
 ### Gestion & Suivi (Dashboard)
 
 - **Programmes** : Création et isolation des audits par "Programme" (ex: Bug Bounty, Client X, Interne). Chaque programme possède sa propre configuration de scan.
@@ -86,7 +80,7 @@ Pour chaque vulnérabilité détectée, la plateforme identifie automatiquement 
 ### Notifications & Automatisation
 
 - **Discord Webhooks** : Alerting en temps réel lors de la découverte de vulnérabilités critiques.
-- **Scheduled Scans** : Planification automatique des analyses selon une fréquence configurable via Celery Beat.
+- **Scheduled Scans** : Planification automatique des analyses selon une fréquence configurable.
 - **Scan Resumption** : Reprise automatique des scans interrompus par un crash ou un arrêt inopiné de la plateforme.
 - **Rate Limiting** : Protection de l'API contre les abus avec limites adaptatives.
 
@@ -151,7 +145,7 @@ Une fois l'installation terminée, accédez aux différentes interfaces :
 
 ## Commandes Utiles (Makefile)
 
-Le fichier `Makefile` inclut des raccourcis pour la gestion quotidienne :
+Le fichier `Makefile` inclut des raccourcis pour la gestion :
 
 | Commande | Description |
 |----------|-------------|
@@ -164,28 +158,6 @@ Le fichier `Makefile` inclut des raccourcis pour la gestion quotidienne :
 | `make shell-backend` | Ouvre un terminal dans le conteneur backend. |
 | `make shell-worker` | Ouvre un terminal dans le conteneur worker_discovery. |
 
-## Configuration
-
-### Variables d'Environnement
-
-Les variables suivantes peuvent être configurées dans le fichier `.env` :
-
-| Variable | Description | Défaut |
-|----------|-------------|--------|
-| `SECRET_KEY` | Clé secrète pour JWT (min 32 car. en prod). | - |
-| `CORS_ORIGINS` | Liste des origines autorisées (CSV). | localhost:5173 |
-| `DATABASE_URL` | URL de connexion PostgreSQL. | postgresql://easm_user:easm_password@db:5432/easm_db |
-| `REDIS_URL` | URL de connexion Redis. | redis://redis:6379/0 |
-| `WORKER_SECRET_TOKEN` | Token d'authentification workers (min 32 car. en prod). | change-me-... |
-| `DISCORD_WEBHOOK_URL` | Webhook Discord pour les alertes. | - |
-| `SCAN_PORTS` | Ports à scanner (CSV). | 80,443,3000-3010,4200,5000-5010,8000-8010,8080-8090 |
-| `SHODAN_API_KEY` | Clé API Shodan (globale). | - |
-| `SECURITYTRAILS_API_KEY` | Clé API SecurityTrails (globale). | - |
-| `CENSYS_API_ID` | ID API Censys (global). | - |
-| `CENSYS_API_SECRET` | Secret API Censys (global). | - |
-| `HACKERTARGET_API_KEY` | Clé API HackerTarget (globale). | - |
-
-Les clés API par programme (configurables dans l'interface) priment sur les clés globales.
 
 ## Captures d'Écran
 
