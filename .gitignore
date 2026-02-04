@@ -69,3 +69,5 @@ htmlcov/
 # Frontend exceptions
 !frontend/src/lib/
 !frontend/src/lib/
+
+CHANGELOG.md

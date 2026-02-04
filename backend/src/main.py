@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -12,9 +13,30 @@ from src.api.v1.endpoints import programs, scans, assets, monitoring, auth, noti
 from src.core.config import settings
 from src.core.logging import setup_logging
 
-# Rate limiter configuration
+
+def get_client_ip(request: Request) -> str:
+    """
+    Get the real client IP address, handling X-Forwarded-For header.
+    In production behind a trusted reverse proxy, extracts the original client IP.
+    """
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    if x_forwarded_for:
+        # Take the first IP in the chain (original client)
+        # This assumes the first proxy is trusted
+        ips = [ip.strip() for ip in x_forwarded_for.split(",")]
+        if ips:
+            return ips[0]
+    
+    x_real_ip = request.headers.get("X-Real-IP")
+    if x_real_ip:
+        return x_real_ip
+    
+    return request.client.host if request.client else "127.0.0.1"
+
+
+# Rate limiter configuration using custom key function
 limiter = Limiter(
-    key_func=get_remote_address,
+    key_func=get_client_ip,
     default_limits=["100/hour"] if settings.ENVIRONMENT == "production" else ["1000/hour"]
 )
 
@@ -50,14 +72,18 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # Shutdown
+    # Shutdown: Clean shutdown
     logger.info("Shutting down EASM Platform API...")
+    # Close database connections
+    await engine.dispose()
 
 app = FastAPI(
     title="EASM Platform API",
     lifespan=lifespan,
     description="External Attack Surface Management Platform",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url="/api/docs" if settings.ENVIRONMENT != "production" else None,
+    redoc_url="/api/redoc" if settings.ENVIRONMENT != "production" else None,
 )
 
 # CORS Configuration - loaded from environment
@@ -65,6 +91,43 @@ cors_origins = settings.cors_origins_list
 
 # GZip compression - added BEFORE CORS so CORS runs first
 app.add_middleware(GZipMiddleware, minimum_size=500)
+
+# Trusted Host middleware (production only)
+if settings.ENVIRONMENT == "production":
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=["*"]  # Configure with actual domains in production
+    )
+
+# Security Headers Middleware
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Add security headers to all responses."""
+    response = await call_next(request)
+    
+    # Prevent MIME type sniffing
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    
+    # Prevent clickjacking
+    response.headers["X-Frame-Options"] = "DENY"
+    
+    # XSS Protection
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    
+    # Referrer Policy
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    
+    # Content Security Policy (relaxed for API)
+    response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none';"
+    
+    # HSTS (only in production with HTTPS)
+    if settings.ENVIRONMENT == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    
+    # Permissions Policy
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    
+    return response
 
 # CORS middleware - added LAST so it runs FIRST and handles all responses including errors
 app.add_middleware(
@@ -110,7 +173,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     from fastapi.responses import JSONResponse
     response = JSONResponse(
         status_code=500,
-        content={"detail": f"Internal server error: {str(exc)}"}
+        content={"detail": "Internal server error"}  # Generic message for security
     )
     
     # Add CORS headers

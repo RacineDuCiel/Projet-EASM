@@ -8,30 +8,57 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432" # Accessible depuis l'hôte pour outils SQL
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-easm_user} -d ${POSTGRES_DB:-easm_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
 
   # ----------------------------------------
-  # Service de Message Broker (Redis)
+  # Service de Message Broker (Redis) - Secured
   # ----------------------------------------
   redis:
     image: redis:7-alpine
-    command: redis-server --appendonly yes
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD:-redis_password_change_in_production}
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_password_change_in_production}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
+      start_period: 10s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    security_opt:
+      - no-new-privileges:true
 
   # ----------------------------------------
   # API Backend
@@ -41,8 +68,8 @@ services:
     env_file: .env
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - ./backend/src:/app/src # Hot-reload: modifiez le code, ça se met à jour
-      - ./backend/alembic:/app/alembic # Pour que les migrations soient persistantes
+      - ./backend/src:/app/src
+      - ./backend/alembic:/app/alembic
       - ./backend/alembic.ini:/app/alembic.ini
     ports:
       - "8000:8000"
@@ -58,15 +85,23 @@ services:
       retries: 3
       start_period: 40s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
 
   # ----------------------------------------
-  # Workers de Scan
+  # Workers de Scan - Discovery Queue
   # ----------------------------------------
   worker_discovery:
     build: ./workers
     env_file: .env
-    # Queue 'discovery' pour les tâches rapides (Subfinder, Orchestration)
-    # Concurrency élevée car peu de CPU/RAM par tâche
     command: celery -A src.celery_app worker --loglevel=info -Q discovery --concurrency=10
     volumes:
       - ./workers/src:/app/src
@@ -82,12 +117,23 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
 
+  # ----------------------------------------
+  # Workers de Scan - Scan Queue (Port/Vuln)
+  # ----------------------------------------
   worker_scan:
     build: ./workers
     env_file: .env
-    # Queue 'scan' pour les tâches lourdes (Naabu, Nuclei)
-    # Concurrency faible pour éviter de surcharger le réseau/CPU
     command: celery -A src.celery_app worker --loglevel=info -Q scan --concurrency=2
     volumes:
       - ./workers/src:/app/src
@@ -96,7 +142,6 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
-    # Capabilities réseau nécessaires pour Naabu (SYN scan)
     cap_add:
       - NET_RAW
       - NET_ADMIN
@@ -109,7 +154,18 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
+  # ----------------------------------------
+  # Celery Beat - Scheduler
+  # ----------------------------------------
   beat:
     build: ./workers
     env_file: .env
@@ -122,6 +178,16 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    security_opt:
+      - no-new-privileges:true
 
   # ----------------------------------------
   # Frontend
@@ -138,15 +204,39 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5173"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    security_opt:
+      - no-new-privileges:true
 
   # ----------------------------------------
-  # Monitoring & Administration
+  # Monitoring & Administration - Flower
   # ----------------------------------------
   flower:
-    image: mher/flower
+    image: mher/flower:2.0.1  # Version pinned for stability
     env_file: .env
-    command: celery --broker=${REDIS_URL:-redis://redis:6379/0} flower --port=5555 --persistent=True --db=/data/flower.db --max_tasks=10000
+    command: >
+      celery
+      --broker=${REDIS_URL:-redis://redis:6379/0}
+      flower
+      --port=5555
+      --persistent=True
+      --db=/data/flower.db
+      --max_tasks=10000
+      --basic_auth=${FLOWER_BASIC_AUTH:-admin:changeme}
     ports:
       - "5555:5555"
     depends_on:
@@ -158,6 +248,16 @@ services:
       - CELERY_BROKER_URL=${REDIS_URL:-redis://redis:6379/0}
       - FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH:-admin:changeme}
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   postgres_data:

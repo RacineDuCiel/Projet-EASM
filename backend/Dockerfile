@@ -38,15 +38,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Create non-root user for security
+RUN groupadd -r easm && useradd -r -g easm -d /home/easm -m easm
+
 # Copy application code
-COPY . .
+COPY --chown=easm:easm . .
 
 # Set Python environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# Switch to non-root user
+USER easm
+
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Default command (can be overridden in docker-compose)

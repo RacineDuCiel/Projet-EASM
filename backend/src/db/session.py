@@ -8,14 +8,18 @@ DATABASE_URL = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncp
 # Disable SQL echo in production
 SQL_ECHO = settings.ENVIRONMENT == "development"
 
+# Enhanced connection pooling configuration for production
 engine = create_async_engine(
     DATABASE_URL,
     echo=SQL_ECHO,
-    pool_size=10,          # Number of connections to keep open
-    max_overflow=20,       # Additional connections when pool is exhausted
-    pool_timeout=30,       # Seconds to wait for an available connection
-    pool_pre_ping=True,    # Verify connection before using
-    pool_recycle=1800,     # Recycle connections after 30 minutes
+    # Connection pool settings
+    pool_size=20,              # Number of persistent connections (increased from 10)
+    max_overflow=10,           # Additional connections when pool is exhausted
+    pool_timeout=30,           # Seconds to wait for an available connection
+    pool_pre_ping=True,        # Verify connection before using (prevents stale connections)
+    pool_recycle=1800,         # Recycle connections after 30 minutes (prevents stale connections)
+    # Performance optimizations
+    pool_use_lifo=True,        # Use LIFO for better connection reuse
 )
 
 AsyncSessionLocal = sessionmaker(
@@ -25,5 +29,9 @@ AsyncSessionLocal = sessionmaker(
 Base = declarative_base()
 
 async def get_db():
+    """Dependency to get async database session."""
     async with AsyncSessionLocal() as session:
-        yield session
+        try:
+            yield session
+        finally:
+            await session.close()

@@ -32,6 +32,7 @@ class User(UserBase):
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: Optional[str] = None
     token_type: str
 
 class TokenWithUser(Token):
@@ -39,3 +40,7 @@ class TokenWithUser(Token):
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+
+class TokenRefreshRequest(BaseModel):
+    """Request schema for token refresh."""
+    refresh_token: str

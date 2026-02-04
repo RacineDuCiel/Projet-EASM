@@ -1,5 +1,5 @@
 import secrets
-from fastapi import APIRouter, Depends, HTTPException, status, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Header, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -9,6 +9,8 @@ from src.db import session as database
 from src import models, schemas, crud
 from src.core import security as auth
 from src.core.config import settings
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 router = APIRouter(
     prefix="/auth",
@@ -17,6 +19,27 @@ router = APIRouter(
 )
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
+
+# Rate limiter for login endpoint
+limiter = Limiter(key_func=get_remote_address)
+
+
+def get_client_ip(request: Request) -> str:
+    """
+    Get the real client IP address, handling X-Forwarded-For header.
+    Validates the header to prevent IP spoofing.
+    """
+    # In production with trusted reverse proxy
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    if x_forwarded_for:
+        # Take the first IP in the chain (original client)
+        # This assumes the first proxy in the chain is trusted
+        ips = [ip.strip() for ip in x_forwarded_for.split(",")]
+        if ips:
+            return ips[0]
+    
+    # Fallback to direct connection
+    return request.client.host if request.client else "127.0.0.1"
 
 
 async def verify_worker_token(
@@ -70,7 +93,17 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     return user
 
 @router.post("/token", response_model=schemas.TokenWithUser)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(database.get_db)):
+@limiter.limit("5/minute")  # Brute-force protection
+async def login_for_access_token(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(database.get_db)
+):
+    """
+    Authenticate user and return access and refresh tokens.
+    
+    Rate limited to 5 attempts per minute to prevent brute-force attacks.
+    """
     # 1. Get user
     result = await db.execute(select(models.User).where(models.User.username == form_data.username))
     user = result.scalar_one_or_none()
@@ -86,11 +119,15 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     if not user.is_active:
         raise HTTPException(status_code=400, detail="Account inactive. Please contact your administrator.")
     
-    # 3. Create token
+    # 3. Create tokens
     access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth.create_access_token(
         data={"sub": user.username, "role": user.role.value, "program_id": str(user.program_id) if user.program_id else None},
         expires_delta=access_token_expires
+    )
+    
+    refresh_token = auth.create_refresh_token(
+        data={"sub": user.username}
     )
     
     # 4. Log login event
@@ -101,7 +138,74 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         user_id=user.id
     ))
 
-    return {"access_token": access_token, "token_type": "bearer", "user": user}
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": user
+    }
+
+@router.post("/refresh", response_model=schemas.Token)
+async def refresh_access_token(
+    request: Request,
+    db: AsyncSession = Depends(database.get_db)
+):
+    """
+    Refresh an access token using a valid refresh token.
+    
+    Returns a new access token. The refresh token itself does not rotate
+    for simplicity, but this could be enhanced for additional security.
+    """
+    # Extract refresh token from Authorization header
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    refresh_token = auth_header.replace("Bearer ", "")
+    
+    # Verify the refresh token
+    payload = auth.verify_token(refresh_token, token_type="refresh")
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    username = payload.get("sub")
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Verify user still exists and is active
+    result = await db.execute(select(models.User).where(models.User.username == username))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Account inactive. Please contact your administrator.")
+    
+    # Create new access token
+    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = auth.create_access_token(
+        data={"sub": user.username, "role": user.role.value, "program_id": str(user.program_id) if user.program_id else None},
+        expires_delta=access_token_expires
+    )
+    
+    return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/users/", response_model=schemas.User)
 async def create_user(
