@@ -1,7 +1,8 @@
-import { LucideIcon, FileQuestion } from 'lucide-react';
+import { FileQuestion } from 'lucide-react';
+import type { LucideProps } from 'lucide-react';
 
 interface EmptyStateProps {
-    icon?: LucideIcon;
+    icon?: React.ComponentType<LucideProps>;
     title: string;
     description?: string;
     action?: React.ReactNode;

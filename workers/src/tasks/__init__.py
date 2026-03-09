@@ -1,5 +1,12 @@
 from .discovery import run_scan, discovery_task, schedule_asset_scans, finalize_scan
-from .scan import port_scan_task, vuln_scan_task
+from .scan import (
+    port_scan_task,
+    tech_detect_task,
+    vuln_scan_prioritized_task,
+    vuln_scan_full_task,
+    vuln_scan_task,
+)
+from .scheduler import trigger_scheduled_scans
 from .maintenance import trigger_periodic_scans, health_check
 from .passive_recon import (
     passive_recon_orchestrator,

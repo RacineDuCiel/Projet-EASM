@@ -1,6 +1,7 @@
 from typing import Optional, List
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
+import logging
 
 class Settings(BaseSettings):
     # Environment
@@ -14,10 +15,18 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # Trusted hosts for TrustedHostMiddleware (comma-separated)
+    ALLOWED_HOSTS: str = "localhost,127.0.0.1"
+
     @property
     def cors_origins_list(self) -> List[str]:
         """Parse CORS_ORIGINS string into a list of origins."""
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def allowed_hosts_list(self) -> List[str]:
+        """Parse ALLOWED_HOSTS string into a list of hostnames."""
+        return [host.strip() for host in self.ALLOWED_HOSTS.split(",") if host.strip()]
     
     # Database
     POSTGRES_USER: str = "easm_user"
@@ -74,6 +83,26 @@ class Settings(BaseSettings):
             unsafe_defaults = ["change-me", "changeme", "secret", "token"]
             if any(default in v.lower() for default in unsafe_defaults):
                 raise ValueError("WORKER_SECRET_TOKEN appears to be a default value.")
+        return v
+
+    @field_validator("FIRST_SUPERUSER_PASSWORD")
+    @classmethod
+    def validate_superuser_password(cls, v, info):
+        values = info.data
+        default_password = "ChangeMe123!"
+        if v == default_password:
+            if values.get("ENVIRONMENT") == "production":
+                raise ValueError(
+                    "FIRST_SUPERUSER_PASSWORD is still the default value. "
+                    "You MUST change it in production."
+                )
+            else:
+                _logger = logging.getLogger("src.core.config")
+                _logger.warning(
+                    "FIRST_SUPERUSER_PASSWORD is still the default value '%s'. "
+                    "Please change it before deploying to production.",
+                    default_password
+                )
         return v
 
     class Config:

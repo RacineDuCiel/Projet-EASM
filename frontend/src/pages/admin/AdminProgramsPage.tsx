@@ -15,6 +15,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from "@/components/ui/use-toast";
 import { Plus, Trash2, Globe, Server, Network, Loader2, AlertCircle, Pencil } from 'lucide-react';
 import { EditProgramDialog } from '@/components/admin/EditProgramDialog';
+import { LoadingSpinner, EmptyState } from '@/components/common';
 
 // --- Schemas ---
 const programSchema = z.object({
@@ -251,11 +252,10 @@ export default function AdminProgramsPage() {
     const { data: programs, isLoading, error } = useQuery({
         queryKey: ['programs'],
         queryFn: programsService.getAll,
-        refetchInterval: 10000, // Auto-refresh every 10s
     });
     const [editingProgram, setEditingProgram] = useState<Program | null>(null);
 
-    if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    if (isLoading) return <LoadingSpinner label="Loading programs..." size="lg" />;
     if (error) return (
         <div className="p-8 flex flex-col items-center gap-4 text-destructive">
             <AlertCircle className="h-12 w-12" />
@@ -279,9 +279,10 @@ export default function AdminProgramsPage() {
                     <ProgramCard key={program.id} program={program} onEdit={setEditingProgram} />
                 ))}
                 {programs?.length === 0 && (
-                    <div className="text-center p-12 border-2 border-dashed rounded-lg text-muted-foreground">
-                        No programs found. Create your first one above.
-                    </div>
+                    <EmptyState
+                        title="No programs found"
+                        description="Create your first program above to get started."
+                    />
                 )}
             </div>
 

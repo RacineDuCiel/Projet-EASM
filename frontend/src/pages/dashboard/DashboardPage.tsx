@@ -2,11 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type { DashboardStats, Vulnerability, Asset } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
 import { SeverityChart } from '@/components/dashboard/SeverityChart';
 import { TrendChart } from '@/components/dashboard/TrendChart';
 import { RecentVulns } from '@/components/dashboard/RecentVulns';
 import { RecentAssets } from '@/components/dashboard/RecentAssets';
+import { LoadingSpinner } from '@/components/common';
 
 export default function DashboardPage() {
     const { data: stats, isLoading: isLoadingStats } = useQuery({
@@ -50,7 +50,7 @@ export default function DashboardPage() {
     });
 
     if (isLoadingStats) {
-        return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+        return <LoadingSpinner label="Loading dashboard..." size="lg" />;
     }
 
     return (

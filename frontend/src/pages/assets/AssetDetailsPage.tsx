@@ -8,9 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Loader2, ShieldAlert, Globe, Server, ArrowUpDown, AlertTriangle, Search } from 'lucide-react';
+import { ArrowLeft, ShieldAlert, Server, ArrowUpDown, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import PassiveIntelTabs from '@/components/passive-intel/PassiveIntelTabs';
+import { SeverityBadge, LoadingSpinner, EmptyState } from '@/components/common';
 
 type SortDirection = 'asc' | 'desc';
 type SortKey = 'severity' | 'title';
@@ -56,8 +57,19 @@ export default function AssetDetailsPage() {
         }));
     };
 
+    const handleSortKeyDown = (key: SortKey, e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleSort(key);
+        }
+    };
+
     if (isLoading) {
-        return <div className="flex h-[50vh] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+        return (
+            <div className="flex h-[50vh] items-center justify-center">
+                <LoadingSpinner label="Loading asset details..." size="lg" />
+            </div>
+        );
     }
 
     if (error || !asset) {
@@ -93,7 +105,7 @@ export default function AssetDetailsPage() {
                 </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Services</CardTitle>
@@ -110,15 +122,6 @@ export default function AssetDetailsPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{asset.vulnerabilities?.length || 0}</div>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Passive Intel</CardTitle>
-                        <Search className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <Badge variant="outline">OSINT Data Available</Badge>
                     </CardContent>
                 </Card>
             </div>
@@ -140,12 +143,26 @@ export default function AssetDetailsPage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('severity')}>
+                                        <TableHead
+                                            className="cursor-pointer hover:bg-muted/50"
+                                            onClick={() => handleSort('severity')}
+                                            role="button"
+                                            tabIndex={0}
+                                            onKeyDown={(e) => handleSortKeyDown('severity', e)}
+                                            aria-label={`Sort by severity ${sortConfig.key === 'severity' ? (sortConfig.direction === 'desc' ? '(descending)' : '(ascending)') : ''}`}
+                                        >
                                             <div className="flex items-center gap-1">
                                                 Severity <ArrowUpDown className="h-3 w-3" />
                                             </div>
                                         </TableHead>
-                                        <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('title')}>
+                                        <TableHead
+                                            className="cursor-pointer hover:bg-muted/50"
+                                            onClick={() => handleSort('title')}
+                                            role="button"
+                                            tabIndex={0}
+                                            onKeyDown={(e) => handleSortKeyDown('title', e)}
+                                            aria-label={`Sort by title ${sortConfig.key === 'title' ? (sortConfig.direction === 'desc' ? '(descending)' : '(ascending)') : ''}`}
+                                        >
                                             <div className="flex items-center gap-1">
                                                 Title <ArrowUpDown className="h-3 w-3" />
                                             </div>
@@ -157,14 +174,7 @@ export default function AssetDetailsPage() {
                                     {sortedVulns.map((vuln, index) => (
                                         <TableRow key={`${vuln.id}-${index}`}>
                                             <TableCell>
-                                                <Badge variant={
-                                                    vuln.severity === 'critical' ? 'destructive' :
-                                                        vuln.severity === 'high' ? 'destructive' :
-                                                            vuln.severity === 'medium' ? 'default' :
-                                                                'secondary'
-                                                }>
-                                                    {vuln.severity}
-                                                </Badge>
+                                                <SeverityBadge severity={vuln.severity} />
                                             </TableCell>
                                             <TableCell className="font-medium">{vuln.title}</TableCell>
                                             <TableCell className="text-muted-foreground text-sm max-w-md truncate" title={vuln.description}>
@@ -175,7 +185,11 @@ export default function AssetDetailsPage() {
                                     {sortedVulns.length === 0 && (
                                         <TableRow>
                                             <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
-                                                No vulnerabilities found.
+                                                <EmptyState
+                                                    icon={ShieldAlert}
+                                                    title="No vulnerabilities found"
+                                                    description="No security issues have been discovered on this asset."
+                                                />
                                             </TableCell>
                                         </TableRow>
                                     )}
@@ -220,7 +234,11 @@ export default function AssetDetailsPage() {
                                     {(!asset.services || asset.services.length === 0) && (
                                         <TableRow>
                                             <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                                                No services found.
+                                                <EmptyState
+                                                    icon={Server}
+                                                    title="No services found"
+                                                    description="No open ports or services have been detected on this asset."
+                                                />
                                             </TableCell>
                                         </TableRow>
                                     )}

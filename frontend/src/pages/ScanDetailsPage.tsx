@@ -7,9 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Loader2, RefreshCw, ShieldAlert, Globe, ArrowUpDown, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, RefreshCw, ShieldAlert, Globe, ArrowUpDown, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { getProfileDisplayName } from '@/components/scans/ProfileSelector';
+import { SeverityBadge, LoadingSpinner, EmptyState } from '@/components/common';
 
 type SortDirection = 'asc' | 'desc';
 type SortKey = 'severity' | 'title' | 'asset';
@@ -82,6 +83,13 @@ export default function ScanDetailsPage() {
         }));
     };
 
+    const handleSortKeyDown = (key: SortKey, e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleSort(key);
+        }
+    };
+
     const getStatusColor = (status: string) => {
         switch (status) {
             case 'completed': return 'bg-green-100 text-green-800 hover:bg-green-100 border-green-200';
@@ -94,7 +102,11 @@ export default function ScanDetailsPage() {
     // --- EARLY RETURNS START HERE ---
 
     if (isLoadingScan) {
-        return <div className="flex h-[50vh] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+        return (
+            <div className="flex h-[50vh] items-center justify-center">
+                <LoadingSpinner label="Loading scan details..." size="lg" />
+            </div>
+        );
     }
 
     if (scanError || !scan) {
@@ -157,7 +169,11 @@ export default function ScanDetailsPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {isLoadingVulns ? <Loader2 className="h-6 w-6 animate-spin" /> : (vulnerabilities?.length || 0)}
+                            {isLoadingVulns ? (
+                                <LoadingSpinner label="" size="sm" className="p-0 inline-flex" />
+                            ) : (
+                                vulnerabilities?.length || 0
+                            )}
                         </div>
                     </CardContent>
                 </Card>
@@ -172,17 +188,38 @@ export default function ScanDetailsPage() {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('severity')}>
+                                <TableHead
+                                    className="cursor-pointer hover:bg-muted/50"
+                                    onClick={() => handleSort('severity')}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(e) => handleSortKeyDown('severity', e)}
+                                    aria-label={`Sort by severity ${sortConfig.key === 'severity' ? (sortConfig.direction === 'desc' ? '(descending)' : '(ascending)') : ''}`}
+                                >
                                     <div className="flex items-center gap-1">
                                         Severity <ArrowUpDown className="h-3 w-3" />
                                     </div>
                                 </TableHead>
-                                <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('title')}>
+                                <TableHead
+                                    className="cursor-pointer hover:bg-muted/50"
+                                    onClick={() => handleSort('title')}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(e) => handleSortKeyDown('title', e)}
+                                    aria-label={`Sort by title ${sortConfig.key === 'title' ? (sortConfig.direction === 'desc' ? '(descending)' : '(ascending)') : ''}`}
+                                >
                                     <div className="flex items-center gap-1">
                                         Title <ArrowUpDown className="h-3 w-3" />
                                     </div>
                                 </TableHead>
-                                <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('asset')}>
+                                <TableHead
+                                    className="cursor-pointer hover:bg-muted/50"
+                                    onClick={() => handleSort('asset')}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(e) => handleSortKeyDown('asset', e)}
+                                    aria-label={`Sort by asset ${sortConfig.key === 'asset' ? (sortConfig.direction === 'desc' ? '(descending)' : '(ascending)') : ''}`}
+                                >
                                     <div className="flex items-center gap-1">
                                         Asset <ArrowUpDown className="h-3 w-3" />
                                     </div>
@@ -194,23 +231,14 @@ export default function ScanDetailsPage() {
                             {isLoadingVulns ? (
                                 <TableRow>
                                     <TableCell colSpan={4} className="h-24 text-center">
-                                        <div className="flex justify-center items-center gap-2 text-muted-foreground">
-                                            <Loader2 className="h-4 w-4 animate-spin" /> Loading vulnerabilities...
-                                        </div>
+                                        <LoadingSpinner label="Loading vulnerabilities..." />
                                     </TableCell>
                                 </TableRow>
                             ) : sortedVulns.length > 0 ? (
                                 sortedVulns.map((vuln, index) => (
                                     <TableRow key={`${vuln.id}-${index}`}>
                                         <TableCell>
-                                            <Badge variant={
-                                                vuln.severity === 'critical' ? 'destructive' :
-                                                    vuln.severity === 'high' ? 'destructive' :
-                                                        vuln.severity === 'medium' ? 'default' :
-                                                            'secondary'
-                                            }>
-                                                {vuln.severity}
-                                            </Badge>
+                                            <SeverityBadge severity={vuln.severity} />
                                         </TableCell>
                                         <TableCell className="font-medium">{vuln.title}</TableCell>
                                         <TableCell className="font-mono text-sm">{vuln.asset_value || '-'}</TableCell>
@@ -222,7 +250,11 @@ export default function ScanDetailsPage() {
                             ) : (
                                 <TableRow>
                                     <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                                        No vulnerabilities found yet.
+                                        <EmptyState
+                                            icon={ShieldAlert}
+                                            title="No vulnerabilities found yet"
+                                            description={scan.status === 'running' ? "The scan is still in progress. Vulnerabilities will appear as they are discovered." : "No vulnerabilities were found during this scan."}
+                                        />
                                     </TableCell>
                                 </TableRow>
                             )}

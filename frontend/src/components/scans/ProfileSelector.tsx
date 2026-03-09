@@ -9,8 +9,8 @@ import {
     ShieldCheck,
     Clock,
     Activity,
-    Loader2
 } from 'lucide-react';
+import { LoadingSpinner } from '@/components/common';
 
 const profileIcons: Record<ScanProfile, typeof Search> = {
     discovery: Search,
@@ -45,7 +45,7 @@ export function ProfileSelector({ value, onChange, showDescriptions = true }: Pr
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-48">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <LoadingSpinner label="Loading profiles..." />
             </div>
         );
     }
@@ -59,7 +59,7 @@ export function ProfileSelector({ value, onChange, showDescriptions = true }: Pr
     }
 
     return (
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Scan profile selection">
             {profiles?.map((profile) => {
                 const Icon = profileIcons[profile.profile as ScanProfile];
                 const isSelected = value === profile.profile;
@@ -74,6 +74,15 @@ export function ProfileSelector({ value, onChange, showDescriptions = true }: Pr
                                 : "border-border hover:border-primary/50"
                         )}
                         onClick={() => onChange(profile.profile as ScanProfile)}
+                        role="radio"
+                        aria-checked={isSelected}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                onChange(profile.profile as ScanProfile);
+                            }
+                        }}
                     >
                         <div className="flex items-center justify-between mb-2">
                             <Icon className="h-5 w-5 text-muted-foreground" />

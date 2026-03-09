@@ -7,7 +7,7 @@ from typing import List, Dict, Any, Set
 from src.celery_app import app
 from src import tools
 from src.tech_mapping import build_nuclei_tags_argument, get_technology_summary
-from src.utils import log_event, post_to_backend, HTTP_TIMEOUT
+from src.utils import log_event, post_to_backend
 
 logger = logging.getLogger(__name__)
 

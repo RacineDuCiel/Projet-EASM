@@ -7,7 +7,7 @@ from typing import Dict, Any, List
 from celery import chain, group, chord
 from src.celery_app import app
 from src import tools
-from src.utils import log_event, post_to_backend, get_session, HTTP_TIMEOUT
+from src.utils import log_event, post_to_backend
 
 logger = logging.getLogger(__name__)
 
@@ -233,9 +233,28 @@ def schedule_asset_scans(assets: list, scan_id: str, scan_config: Dict[str, Any]
     task_chains = [c for c in (build_asset_chain(asset) for asset in assets) if c]
 
     if task_chains:
-        # Use chord to run all chains in parallel, then finalize
-        callback = finalize_scan.s(scan_id)
-        chord(group(task_chains))(callback)
+        # Chunk task chains to prevent resource exhaustion with large asset lists
+        CHUNK_SIZE = 50
+        if len(task_chains) > CHUNK_SIZE:
+            # Split into chunks and run each chunk as a separate chord
+            for i in range(0, len(task_chains), CHUNK_SIZE):
+                chunk = task_chains[i:i + CHUNK_SIZE]
+                if i + CHUNK_SIZE >= len(task_chains):
+                    # Last chunk: attach the finalize callback
+                    callback = finalize_scan.s(scan_id)
+                    chord(group(chunk))(callback)
+                else:
+                    # Intermediate chunks: run without finalize callback
+                    group(chunk).apply_async()
+            log_event(
+                scan_id,
+                f"Scheduled {len(task_chains)} asset scans in "
+                f"{(len(task_chains) + CHUNK_SIZE - 1) // CHUNK_SIZE} chunks of {CHUNK_SIZE}"
+            )
+        else:
+            # Small enough to run as a single chord
+            callback = finalize_scan.s(scan_id)
+            chord(group(task_chains))(callback)
     else:
         # No tasks to run, just finalize
         finalize_scan.delay([], scan_id)

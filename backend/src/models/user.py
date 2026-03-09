@@ -17,4 +17,4 @@ class User(Base):
     program_id = Column(UUID(as_uuid=True), ForeignKey("programs.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    program = relationship("Program", backref="users", lazy="selectin")
+    program = relationship("Program", backref="users", lazy="raise")

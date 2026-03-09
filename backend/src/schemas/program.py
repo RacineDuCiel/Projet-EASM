@@ -46,6 +46,7 @@ class ProgramBase(BaseModel):
 
 
 class ProgramCreate(ProgramBase):
+    @field_validator('name')
     @classmethod
     def validate_program_name(cls, v):
         return validators.sanitize_string(v, max_length=200)
@@ -88,5 +89,13 @@ class Program(ProgramBase):
     delta_scan_threshold_hours: int = 24
     created_at: datetime
     scopes: List[Scope] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProgramSummary(ProgramBase):
+    """Program schema without scopes - used in User responses to avoid lazy loading issues."""
+    id: UUID
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

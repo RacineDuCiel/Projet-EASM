@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Bell, Save, Loader2, Send, Radar, Clock, Info, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { LoadingSpinner } from '@/components/common';
 
 export default function SettingsPage() {
     const queryClient = useQueryClient();
@@ -105,7 +106,7 @@ export default function SettingsPage() {
     };
 
     if (isLoading) {
-        return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+        return <LoadingSpinner label="Loading settings..." size="lg" />;
     }
 
     if (error) {

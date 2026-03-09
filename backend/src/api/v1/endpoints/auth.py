@@ -104,8 +104,13 @@ async def login_for_access_token(
     
     Rate limited to 5 attempts per minute to prevent brute-force attacks.
     """
-    # 1. Get user
-    result = await db.execute(select(models.User).where(models.User.username == form_data.username))
+    # 1. Get user with program (but not program's relationships)
+    from sqlalchemy.orm import selectinload
+    result = await db.execute(
+        select(models.User)
+        .options(selectinload(models.User.program))
+        .where(models.User.username == form_data.username)
+    )
     user = result.scalar_one_or_none()
     
     # 2. Verify password
@@ -227,6 +232,7 @@ async def create_user(
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Username already registered")
     
+    from sqlalchemy.orm import selectinload
     hashed_password = auth.get_password_hash(user.password)
     db_user = models.User(
         username=user.username, 
@@ -236,13 +242,20 @@ async def create_user(
     )
     db.add(db_user)
     await db.commit()
-    await db.refresh(db_user)
-    
+
+    # Re-query with selectinload to avoid lazy="raise" on program relationship
+    result = await db.execute(
+        select(models.User)
+        .options(selectinload(models.User.program))
+        .where(models.User.id == db_user.id)
+    )
+    db_user = result.scalar_one()
+
     await crud.create_system_log(db, schemas.SystemLogCreate(
         level="info",
         message=f"User '{db_user.username}' created",
         source="auth",
-        user_id=None # System event or admin?
+        user_id=None
     ))
     
     return db_user
@@ -329,8 +342,15 @@ async def update_user(
 
     db.add(user)
     await db.commit()
-    await db.refresh(user)
-    return user
+
+    # Re-query with selectinload to avoid lazy="raise" on program relationship
+    from sqlalchemy.orm import selectinload
+    result = await db.execute(
+        select(models.User)
+        .options(selectinload(models.User.program))
+        .where(models.User.id == user.id)
+    )
+    return result.scalar_one()
 
 @router.delete("/users/{user_id}", status_code=204)
 async def delete_user(

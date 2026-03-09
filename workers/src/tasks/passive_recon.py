@@ -8,7 +8,7 @@ Deep mode: + tlsx, katana, waybackurls, gau, security headers, favicon hash, + A
 import logging
 import socket
 from typing import Dict, Any, List
-from celery import chain, group, chord
+from celery import group, chord
 from src.celery_app import app
 from src import tools
 from src.utils import log_event, post_to_backend

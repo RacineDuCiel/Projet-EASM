@@ -41,7 +41,7 @@ class Program(Base):
     censys_api_id = Column(EncryptedString(500), nullable=True)
     censys_api_secret = Column(EncryptedString(500), nullable=True)
 
-    scopes = relationship("Scope", back_populates="program", cascade="all, delete-orphan", lazy="selectin")
+    scopes = relationship("Scope", back_populates="program", cascade="all, delete-orphan", lazy="raise")
 
 class Scope(Base):
     __tablename__ = "scopes"
@@ -52,6 +52,6 @@ class Scope(Base):
     value = Column(String, nullable=False)
     port = Column(Integer, nullable=True)  # Support pour la syntaxe Cible:Port
 
-    program = relationship("Program", back_populates="scopes", lazy="selectin")
-    scans = relationship("Scan", back_populates="scope", cascade="all, delete-orphan", lazy="selectin")
-    assets = relationship("Asset", back_populates="scope", cascade="all, delete-orphan", lazy="selectin")
+    program = relationship("Program", back_populates="scopes", lazy="raise")
+    scans = relationship("Scan", back_populates="scope", cascade="all, delete-orphan", lazy="raise")
+    assets = relationship("Asset", back_populates="scope", cascade="all, delete-orphan", lazy="raise")

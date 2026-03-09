@@ -11,7 +11,7 @@ router = APIRouter(
 )
 
 from src.api.v1.endpoints import auth
-from src.models import User
+from src.models import User, UserRole
 
 from typing import Optional
 from uuid import UUID
@@ -31,7 +31,7 @@ async def read_assets(
             raise HTTPException(status_code=404, detail="Scope not found")
 
         # Non-admin users can only access scopes from their assigned program
-        if current_user.role != "admin":
+        if current_user.role != UserRole.admin:
             if scope.program_id != current_user.program_id:
                 raise HTTPException(
                     status_code=403,
@@ -40,7 +40,7 @@ async def read_assets(
 
         return await crud.get_assets_by_scope(db, scope_id=scope_id, skip=skip, limit=limit)
 
-    if current_user.role == "admin":
+    if current_user.role == UserRole.admin:
         return await crud.get_assets(db, skip=skip, limit=limit)
     else:
         return await crud.get_assets_by_program(db, program_id=current_user.program_id, skip=skip, limit=limit)
@@ -56,7 +56,7 @@ async def read_asset(
         raise HTTPException(status_code=404, detail="Asset not found")
 
     # Check permissions
-    if current_user.role != "admin":
+    if current_user.role != UserRole.admin:
         if asset.scope.program_id != current_user.program_id:
             raise HTTPException(status_code=403, detail="Not authorized to view this asset")
 
@@ -76,7 +76,7 @@ async def update_asset(
         raise HTTPException(status_code=404, detail="Asset not found")
 
     # Check permissions
-    if current_user.role != "admin":
+    if current_user.role != UserRole.admin:
         if asset.scope.program_id != current_user.program_id:
             raise HTTPException(status_code=403, detail="Not authorized to update this asset")
 

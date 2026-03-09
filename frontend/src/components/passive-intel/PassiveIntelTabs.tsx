@@ -7,7 +7,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-    Loader2,
     Globe,
     ShieldCheck,
     Lock,
@@ -22,6 +21,7 @@ import {
     ExternalLink
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { LoadingSpinner } from '@/components/common';
 
 interface PassiveIntelTabsProps {
     assetId: string;
@@ -45,11 +45,7 @@ export default function PassiveIntelTabs({ assetId }: PassiveIntelTabsProps) {
     });
 
     if (summaryLoading || intelLoading) {
-        return (
-            <div className="flex h-32 items-center justify-center">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            </div>
-        );
+        return <LoadingSpinner label="Loading passive intelligence..." />;
     }
 
     const hasData = summary && (

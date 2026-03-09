@@ -4,6 +4,7 @@ Circuit Breaker pattern implementation for external service resilience.
 Provides fault tolerance for external API calls (Shodan, Censys, etc.)
 by preventing cascading failures when services are down or slow.
 """
+import asyncio
 import time
 import threading
 from enum import Enum
@@ -169,10 +170,13 @@ class CircuitBreaker:
             raise
 
 
-import asyncio
-
-
-# Pre-configured circuit breakers for common external services
+# Pre-configured circuit breakers for common external services.
+# These are available infrastructure for use by passive recon and API integration
+# modules (e.g., workers/src/tasks/passive_recon.py, workers/src/tools/).
+# Wrap external API calls with these breakers to get automatic fault tolerance:
+#   result = await shodan_breaker.call_async(query_shodan, ip)
+#   @censys_breaker
+#   def query_censys(domain): ...
 shodan_breaker = CircuitBreaker(
     service_name="shodan",
     fail_max=3,

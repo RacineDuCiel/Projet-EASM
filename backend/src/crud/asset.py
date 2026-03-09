@@ -49,7 +49,16 @@ async def create_asset(
         new_vulns = await _batch_create_vulnerabilities(db, db_asset.id, asset.vulnerabilities)
     
     await db.commit()
-    await db.refresh(db_asset)
+    # Eager load relationships to prevent lazy="raise" on serialization
+    result = await db.execute(
+        select(models.Asset)
+        .options(
+            selectinload(models.Asset.services),
+            selectinload(models.Asset.vulnerabilities)
+        )
+        .where(models.Asset.id == db_asset.id)
+    )
+    db_asset = result.scalar_one()
     
     if new_vulns:
         logger.info(f"Asset {db_asset.value}: {len(new_vulns)} new vulnerabilities added")
@@ -175,6 +184,7 @@ async def get_asset(db: AsyncSession, asset_id: UUID):
         select(models.Asset)
         .where(models.Asset.id == asset_id)
         .options(
+            selectinload(models.Asset.scope),
             selectinload(models.Asset.services),
             selectinload(models.Asset.vulnerabilities)
         )
@@ -368,7 +378,16 @@ async def update_asset(
             setattr(db_asset, field, value)
 
     await db.commit()
-    await db.refresh(db_asset)
+    # Eager load relationships to prevent lazy="raise" on serialization
+    result = await db.execute(
+        select(models.Asset)
+        .options(
+            selectinload(models.Asset.services),
+            selectinload(models.Asset.vulnerabilities)
+        )
+        .where(models.Asset.id == db_asset.id)
+    )
+    db_asset = result.scalar_one()
 
     logger.info(f"Updated asset {db_asset.value} with {update_data}")
     return db_asset
@@ -449,6 +468,37 @@ async def mark_asset_scanned(
         db_asset.scan_count += 1
         await db.commit()
         logger.debug(f"Marked asset {asset_value} as scanned (count: {db_asset.scan_count})")
+
+
+async def mark_assets_scanned_batch(
+    db: AsyncSession,
+    scope_id: UUID,
+    asset_values: list[str]
+) -> int:
+    """
+    Batch mark multiple assets as scanned using a single UPDATE + single commit.
+    Returns the number of assets updated.
+    """
+    from sqlalchemy import update
+    if not asset_values:
+        return 0
+
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        update(models.Asset)
+        .where(and_(
+            models.Asset.scope_id == scope_id,
+            models.Asset.value.in_(asset_values)
+        ))
+        .values(
+            last_scanned_at=now,
+            scan_count=models.Asset.scan_count + 1
+        )
+    )
+    await db.commit()
+    updated_count = result.rowcount
+    logger.debug(f"Batch marked {updated_count} assets as scanned")
+    return updated_count
 
 
 async def get_by_domain_pattern(

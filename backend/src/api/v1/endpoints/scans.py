@@ -4,10 +4,13 @@ from typing import List
 from uuid import UUID
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from src import crud, schemas
+from src import crud, models, schemas
 from src.db import session as database
 from src.services.scan_service import ScanService
 from src.services.asset_service import AssetService
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/scans",
@@ -32,13 +35,16 @@ async def create_scan(
     db: AsyncSession = Depends(database.get_db),
     current_user: User = Depends(auth.get_current_user)
 ):
-    if current_user.role == UserRole.admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admins cannot launch scans. This is an operational task for users."
-        )
+    # Non-admin users can only launch scans on scopes belonging to their program
+    if current_user.role != UserRole.admin:
+        scope = await crud.get_scope(db, scan.scope_id)
+        if not scope or scope.program_id != current_user.program_id:
+            raise HTTPException(status_code=403, detail="Not authorized to launch scans on this scope")
 
-    db_scan = await ScanService.create_scan(db, scan)
+    try:
+        db_scan = await ScanService.create_scan(db, scan)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     if not db_scan:
         raise HTTPException(status_code=404, detail="Scope not found")
     return db_scan
@@ -117,7 +123,8 @@ async def add_vulnerability_stream(
             "scan_id": str(scan_id)
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to add vulnerability: {str(e)}")
+        logger.error(f"Failed to add vulnerability for scan {scan_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to add vulnerability")
 
 @router.post("/{scan_id}/tech-detect")
 async def update_tech_detection(
@@ -153,7 +160,8 @@ async def update_tech_detection(
             "service_id": str(service.id) if service else None
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update tech detection: {str(e)}")
+        logger.error(f"Failed to update tech detection for scan {scan_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update tech detection")
 
 
 @router.post("/{scan_id}/events", response_model=schemas.ScanEvent)
@@ -171,14 +179,9 @@ async def add_scan_event(
     # 2. Create Event
     return await crud.create_scan_event(db, event, scan_id)
 
-@router.get("/{scan_id}/events", response_model=List[schemas.ScanEvent])
-async def read_scan_events(scan_id: UUID, db: AsyncSession = Depends(database.get_db)):
-    scan = await ScanService.get_scan(db, scan_id)
-    if not scan:
-        raise HTTPException(status_code=404, detail="Scan not found")
-    return scan.events
 
-
+# IMPORTANT: /profiles must be defined BEFORE /{scan_id} to prevent
+# "profiles" from being interpreted as a scan_id path parameter.
 @router.get("/profiles", response_model=List[schemas.ScanProfileInfo])
 async def get_scan_profiles():
     """
@@ -188,10 +191,38 @@ async def get_scan_profiles():
     return ScanService.get_available_profiles()
 
 
+@router.get("/{scan_id}/events", response_model=List[schemas.ScanEvent])
+async def read_scan_events(
+    scan_id: UUID,
+    db: AsyncSession = Depends(database.get_db),
+    current_user: User = Depends(auth.get_current_user)
+):
+    from sqlalchemy import select as sa_select
+    from sqlalchemy.orm import selectinload
+    # Load scan with events eagerly (Scan.events uses lazy="raise")
+    result = await db.execute(
+        sa_select(models.Scan)
+        .where(models.Scan.id == scan_id)
+        .options(selectinload(models.Scan.events))
+    )
+    scan = result.scalar_one_or_none()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    # Non-admin users can only view events for scans in their program
+    if current_user.role != UserRole.admin:
+        scope = await crud.get_scope(db, scan.scope_id)
+        if not scope or scope.program_id != current_user.program_id:
+            raise HTTPException(status_code=403, detail="Not authorized to view this scan's events")
+
+    return scan.events
+
+
 @router.get("/{scan_id}/vulnerabilities", response_model=List[schemas.VulnerabilityWithAsset])
 async def get_scan_vulnerabilities(
     scan_id: UUID,
-    db: AsyncSession = Depends(database.get_db)
+    db: AsyncSession = Depends(database.get_db),
+    current_user: User = Depends(auth.get_current_user)
 ):
     """
     Get all vulnerabilities discovered by a specific scan.
@@ -201,6 +232,12 @@ async def get_scan_vulnerabilities(
     scan = await ScanService.get_scan(db, scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
+
+    # Non-admin users can only view vulnerabilities for scans in their program
+    if current_user.role != UserRole.admin:
+        scope = await crud.get_scope(db, scan.scope_id)
+        if not scope or scope.program_id != current_user.program_id:
+            raise HTTPException(status_code=403, detail="Not authorized to view this scan's vulnerabilities")
 
     vulnerabilities = await crud.get_vulnerabilities_by_scan(db, scan_id)
 
@@ -235,10 +272,21 @@ async def check_schedules(
     return {"status": "ok", "triggered_scans": triggered}
 
 @router.get("/{scan_id}", response_model=schemas.Scan)
-async def read_scan(scan_id: UUID, db: AsyncSession = Depends(database.get_db)):
+async def read_scan(
+    scan_id: UUID,
+    db: AsyncSession = Depends(database.get_db),
+    current_user: User = Depends(auth.get_current_user)
+):
     scan = await ScanService.get_scan(db, scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
+
+    # Non-admin users can only view scans in their program
+    if current_user.role != UserRole.admin:
+        scope = await crud.get_scope(db, scan.scope_id)
+        if not scope or scope.program_id != current_user.program_id:
+            raise HTTPException(status_code=403, detail="Not authorized to view this scan")
+
     return scan
 
 @router.post("/{scan_id}/stop", response_model=schemas.Scan)
@@ -298,7 +346,7 @@ async def mark_assets_scanned(
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    for asset_value in request_data.asset_values:
-        await crud.mark_asset_scanned(db, scan.scope_id, asset_value)
+    # Batch update: single UPDATE query + single commit instead of per-asset loop
+    updated = await crud.mark_assets_scanned_batch(db, scan.scope_id, request_data.asset_values)
 
-    return {"status": "ok", "marked_count": len(request_data.asset_values)}
+    return {"status": "ok", "marked_count": updated}

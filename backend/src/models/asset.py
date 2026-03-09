@@ -31,22 +31,23 @@ class Asset(Base):
     last_scanned_at = Column(DateTime(timezone=True), nullable=True)
     scan_count = Column(Integer, default=0, nullable=False)
 
-    # Relationships - using selectin for eager loading when accessed
-    scope = relationship("Scope", back_populates="assets", lazy="selectin")
-    services = relationship("Service", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
-    vulnerabilities = relationship("Vulnerability", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
+    # Relationships - using lazy="raise" to prevent accidental N+1 queries
+    # Use explicit selectinload/joinedload in queries when relationships are needed
+    scope = relationship("Scope", back_populates="assets", lazy="raise")
+    services = relationship("Service", back_populates="asset", cascade="all, delete-orphan", lazy="raise")
+    vulnerabilities = relationship("Vulnerability", back_populates="asset", cascade="all, delete-orphan", lazy="raise")
 
     # Passive Intelligence relationships
-    dns_records = relationship("DNSRecord", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
-    whois_record = relationship("WHOISRecord", back_populates="asset", uselist=False, cascade="all, delete-orphan", lazy="selectin")
-    certificates = relationship("Certificate", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
-    asn_info = relationship("ASNInfo", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
-    historical_urls = relationship("HistoricalURL", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
-    security_headers = relationship("SecurityHeader", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
-    favicon_hash = relationship("FaviconHash", back_populates="asset", uselist=False, cascade="all, delete-orphan", lazy="selectin")
-    shodan_data = relationship("ShodanData", back_populates="asset", uselist=False, cascade="all, delete-orphan", lazy="selectin")
-    crawled_endpoints = relationship("CrawledEndpoint", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
-    technology_fingerprints = relationship("TechnologyFingerprint", back_populates="asset", cascade="all, delete-orphan", lazy="selectin")
+    dns_records = relationship("DNSRecord", back_populates="asset", cascade="all, delete-orphan", lazy="raise")
+    whois_record = relationship("WHOISRecord", back_populates="asset", uselist=False, cascade="all, delete-orphan", lazy="raise")
+    certificates = relationship("Certificate", back_populates="asset", cascade="all, delete-orphan", lazy="raise")
+    asn_info = relationship("ASNInfo", back_populates="asset", cascade="all, delete-orphan", lazy="raise")
+    historical_urls = relationship("HistoricalURL", back_populates="asset", cascade="all, delete-orphan", lazy="raise")
+    security_headers = relationship("SecurityHeader", back_populates="asset", cascade="all, delete-orphan", lazy="raise")
+    favicon_hash = relationship("FaviconHash", back_populates="asset", uselist=False, cascade="all, delete-orphan", lazy="raise")
+    shodan_data = relationship("ShodanData", back_populates="asset", uselist=False, cascade="all, delete-orphan", lazy="raise")
+    crawled_endpoints = relationship("CrawledEndpoint", back_populates="asset", cascade="all, delete-orphan", lazy="raise")
+    technology_fingerprints = relationship("TechnologyFingerprint", back_populates="asset", cascade="all, delete-orphan", lazy="raise")
 
 
 class Service(Base):
@@ -73,8 +74,8 @@ class Service(Base):
     tls_version = Column(String, nullable=True)  # e.g., "TLSv1.3"
     response_time_ms = Column(Integer, nullable=True)
 
-    asset = relationship("Asset", back_populates="services", lazy="selectin")
-    vulnerabilities = relationship("Vulnerability", back_populates="service", lazy="selectin")
+    asset = relationship("Asset", back_populates="services", lazy="raise")
+    vulnerabilities = relationship("Vulnerability", back_populates="service", lazy="raise")
 
 
 class Vulnerability(Base):
@@ -102,6 +103,6 @@ class Vulnerability(Base):
     status = Column(SqlEnum(VulnStatus), default=VulnStatus.open)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    asset = relationship("Asset", back_populates="vulnerabilities", lazy="selectin")
-    service = relationship("Service", back_populates="vulnerabilities", lazy="selectin")
-    scan = relationship("Scan", back_populates="vulnerabilities", lazy="selectin")
+    asset = relationship("Asset", back_populates="vulnerabilities", lazy="raise")
+    service = relationship("Service", back_populates="vulnerabilities", lazy="raise")
+    scan = relationship("Scan", back_populates="vulnerabilities", lazy="raise")

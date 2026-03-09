@@ -1,9 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Activity, Users, Shield, Database, Loader2 } from 'lucide-react';
+import { Activity, Users, Shield, Database } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type { SystemLog, User, Program } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
+import { LoadingSpinner } from '@/components/common';
 
 export default function AdminDashboard() {
     const { data: logs } = useQuery<SystemLog[]>({
@@ -75,7 +76,7 @@ export default function AdminDashboard() {
                     </CardHeader>
                     <CardContent>
                         {usersLoading ? (
-                            <Loader2 className="h-6 w-6 animate-spin" />
+                            <LoadingSpinner label="" size="sm" className="p-0" />
                         ) : (
                             <>
                                 <div className="text-2xl font-bold">{totalUsers}</div>
@@ -94,7 +95,7 @@ export default function AdminDashboard() {
                     </CardHeader>
                     <CardContent>
                         {programsLoading ? (
-                            <Loader2 className="h-6 w-6 animate-spin" />
+                            <LoadingSpinner label="" size="sm" className="p-0" />
                         ) : (
                             <>
                                 <div className="text-2xl font-bold">{totalPrograms}</div>

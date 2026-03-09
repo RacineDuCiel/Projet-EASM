@@ -7,8 +7,9 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import logging
+import re
 
-from src.db.session import engine, Base, AsyncSessionLocal
+from src.db.session import engine, AsyncSessionLocal
 from src.api.v1.endpoints import programs, scans, assets, monitoring, auth, notifications, settings as settings_router, vulnerabilities, logs, passive_intel, security_posture
 from src.core.config import settings
 from src.core.logging import setup_logging
@@ -42,25 +43,17 @@ limiter = Limiter(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Configure logging and create tables
+    # Startup: Configure logging
     setup_logging()
     logger = logging.getLogger("src.main")
     logger.info("Starting EASM Platform API...")
-    
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    
+
+    # NOTE: Database schema is managed by Alembic migrations.
+    # Do NOT use Base.metadata.create_all() here.
+
     # Recovery: Resume interrupted scans
     async with AsyncSessionLocal() as db:
         try:
-            # Patch Enum if needed (PostgreSQL specific)
-            from sqlalchemy import text
-            try:
-                await db.execute(text("ALTER TYPE scanstatus ADD VALUE IF NOT EXISTS 'stopped'"))
-                await db.commit()
-            except Exception as e:
-                logger.warning(f"Could not alter enum type (might be sqlite or already exists): {e}")
-
             from src.services.scan_service import ScanService
             await ScanService.resume_interrupted_scans(db)
             
@@ -88,6 +81,8 @@ app = FastAPI(
 
 # CORS Configuration - loaded from environment
 cors_origins = settings.cors_origins_list
+# In development, also allow any origin on port 5173 (LAN access)
+cors_origin_regex = r"^http://(localhost|127\.0\.0\.1|(\d{1,3}\.){3}\d{1,3}):5173$" if settings.ENVIRONMENT != "production" else None
 
 # GZip compression - added BEFORE CORS so CORS runs first
 app.add_middleware(GZipMiddleware, minimum_size=500)
@@ -96,7 +91,7 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 if settings.ENVIRONMENT == "production":
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["*"]  # Configure with actual domains in production
+        allowed_hosts=settings.allowed_hosts_list
     )
 
 # Security Headers Middleware
@@ -133,6 +128,7 @@ async def security_headers_middleware(request: Request, call_next):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    allow_origin_regex=cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -142,6 +138,16 @@ app.add_middleware(
 # Add rate limiting
 app.state.limiter = limiter
 
+def _is_allowed_origin(origin: str | None) -> bool:
+    """Check if an origin is allowed by CORS (static list or dev regex)."""
+    if not origin:
+        return False
+    if origin in cors_origins:
+        return True
+    if cors_origin_regex and re.match(cors_origin_regex, origin):
+        return True
+    return False
+
 async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
     """
     Custom handler for RateLimitExceeded to ensure CORS headers are present.
@@ -150,7 +156,7 @@ async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
     # Manually add CORS headers for rate limit responses
     origin = request.headers.get("origin")
-    if origin in cors_origins:
+    if _is_allowed_origin(origin):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Methods"] = "*"
@@ -178,7 +184,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     
     # Add CORS headers
     origin = request.headers.get("origin")
-    if origin in cors_origins:
+    if _is_allowed_origin(origin):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Methods"] = "*"

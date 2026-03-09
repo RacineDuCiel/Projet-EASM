@@ -11,6 +11,9 @@ import { UserPlus, Trash2, Shield, User as UserIcon, Loader2, Pencil, Search, Sh
 import { EditUserDialog } from '@/components/admin/EditUserDialog';
 import { CreateAdminDialog } from '@/components/admin/CreateAdminDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { LoadingSpinner, EmptyState } from '@/components/common';
 
 export default function AdminUsersPage() {
     const queryClient = useQueryClient();
@@ -20,24 +23,22 @@ export default function AdminUsersPage() {
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [showCreateAdmin, setShowCreateAdmin] = useState(false);
 
-    // Fetch Users with auto-refresh
+    // Fetch Users
     const { data: users, isLoading: isLoadingUsers, error: usersError } = useQuery({
         queryKey: ['users'],
         queryFn: async () => {
             const response = await api.get<User[]>('/auth/users/');
             return response.data;
         },
-        refetchInterval: 10000, // Auto-refresh every 10s
     });
 
-    // Fetch Programs for selection with auto-refresh
+    // Fetch Programs for selection
     const { data: programs } = useQuery({
         queryKey: ['programs'],
         queryFn: async () => {
             const response = await api.get<Program[]>('/programs/');
             return response.data;
         },
-        refetchInterval: 10000, // Auto-refresh every 10s
     });
 
     // Create User Mutation (For Standard Users)
@@ -85,7 +86,7 @@ export default function AdminUsersPage() {
         (user.program?.name || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    if (isLoadingUsers) return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+    if (isLoadingUsers) return <LoadingSpinner label="Loading users..." size="lg" />;
     if (usersError) return <div className="p-8 text-destructive">Error loading users. Please check backend logs.</div>;
 
     return (
@@ -139,17 +140,20 @@ export default function AdminUsersPage() {
                                 </div>
                                 <div className="grid w-full items-center gap-1.5">
                                     <Label htmlFor="program">Program (Optional)</Label>
-                                    <select
-                                        id="program"
-                                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        value={newUser.program_id}
-                                        onChange={(e) => setNewUser({ ...newUser, program_id: e.target.value })}
+                                    <Select
+                                        value={newUser.program_id || "_none"}
+                                        onValueChange={(value) => setNewUser({ ...newUser, program_id: value === '_none' ? '' : value })}
                                     >
-                                        <option value="">No Program (assign later)</option>
-                                        {programs?.map(p => (
-                                            <option key={p.id} value={p.id}>{p.name}</option>
-                                        ))}
-                                    </select>
+                                        <SelectTrigger id="program">
+                                            <SelectValue placeholder="No Program (assign later)" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="_none">No Program (assign later)</SelectItem>
+                                            {programs?.map(p => (
+                                                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                                 <Button type="submit" disabled={createUserMutation.isPending}>
                                     {createUserMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
@@ -214,9 +218,31 @@ export default function AdminUsersPage() {
                                                     <Button variant="ghost" size="icon" onClick={() => setEditingUser(user)}>
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteUserMutation.mutate(user.id)}>
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
+                                                    <AlertDialog>
+                                                        <AlertDialogTrigger asChild>
+                                                            <Button variant="ghost" size="icon" className="text-destructive">
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </AlertDialogTrigger>
+                                                        <AlertDialogContent>
+                                                            <AlertDialogHeader>
+                                                                <AlertDialogTitle>Delete user "{user.username}"?</AlertDialogTitle>
+                                                                <AlertDialogDescription>
+                                                                    This action cannot be undone. The user will be permanently removed
+                                                                    from the platform and will lose all access.
+                                                                </AlertDialogDescription>
+                                                            </AlertDialogHeader>
+                                                            <AlertDialogFooter>
+                                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                <AlertDialogAction
+                                                                    onClick={() => deleteUserMutation.mutate(user.id)}
+                                                                    className="bg-destructive hover:bg-destructive/90"
+                                                                >
+                                                                    Delete
+                                                                </AlertDialogAction>
+                                                            </AlertDialogFooter>
+                                                        </AlertDialogContent>
+                                                    </AlertDialog>
                                                 </div>
                                             </TableCell>
                                         </TableRow>
@@ -224,7 +250,11 @@ export default function AdminUsersPage() {
                                     {filteredUsers?.length === 0 && (
                                         <TableRow>
                                             <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                                                No users found.
+                                                <EmptyState
+                                                    icon={Search}
+                                                    title="No users found"
+                                                    description={searchQuery ? "Try adjusting your search query." : "No users have been created yet."}
+                                                />
                                             </TableCell>
                                         </TableRow>
                                     )}

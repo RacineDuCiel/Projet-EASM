@@ -30,7 +30,7 @@ class DNSRecord(Base):
     first_seen = Column(DateTime(timezone=True), server_default=func.now())
     last_seen = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    asset = relationship("Asset", back_populates="dns_records", lazy="selectin")
+    asset = relationship("Asset", back_populates="dns_records", lazy="raise")
 
 
 class WHOISRecord(Base):
@@ -56,7 +56,7 @@ class WHOISRecord(Base):
     raw_data = Column(Text, nullable=True)  # Full WHOIS response
     collected_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    asset = relationship("Asset", back_populates="whois_record", lazy="selectin")
+    asset = relationship("Asset", back_populates="whois_record", lazy="raise")
 
 
 class Certificate(Base):
@@ -91,8 +91,8 @@ class Certificate(Base):
     source = Column(String(50), nullable=True)  # "crt.sh", "tlsx", "censys"
     collected_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    asset = relationship("Asset", back_populates="certificates", lazy="selectin")
-    service = relationship("Service", lazy="selectin")
+    asset = relationship("Asset", back_populates="certificates", lazy="raise")
+    service = relationship("Service", lazy="raise")
 
 
 class ASNInfo(Base):
@@ -116,7 +116,7 @@ class ASNInfo(Base):
     rir = Column(String(20), nullable=True)  # ARIN, RIPE, APNIC, LACNIC, AFRINIC
     collected_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    asset = relationship("Asset", back_populates="asn_info", lazy="selectin")
+    asset = relationship("Asset", back_populates="asn_info", lazy="raise")
 
 
 class HistoricalURL(Base):
@@ -138,7 +138,7 @@ class HistoricalURL(Base):
     content_type = Column(String(100), nullable=True)
     collected_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    asset = relationship("Asset", back_populates="historical_urls", lazy="selectin")
+    asset = relationship("Asset", back_populates="historical_urls", lazy="raise")
 
 
 class SecurityHeader(Base):
@@ -169,8 +169,8 @@ class SecurityHeader(Base):
     grade = Column(String(5), nullable=True)  # A+, A, B, C, D, F
     collected_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    asset = relationship("Asset", back_populates="security_headers", lazy="selectin")
-    service = relationship("Service", lazy="selectin")
+    asset = relationship("Asset", back_populates="security_headers", lazy="raise")
+    service = relationship("Service", lazy="raise")
 
 
 class FaviconHash(Base):
@@ -192,7 +192,7 @@ class FaviconHash(Base):
     favicon_size = Column(Integer, nullable=True)  # Bytes
     collected_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    asset = relationship("Asset", back_populates="favicon_hash", lazy="selectin")
+    asset = relationship("Asset", back_populates="favicon_hash", lazy="raise")
 
 
 class ShodanData(Base):
@@ -225,7 +225,7 @@ class ShodanData(Base):
     raw_data = Column(Text, nullable=True)  # Full JSON response
     collected_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    asset = relationship("Asset", back_populates="shodan_data", lazy="selectin")
+    asset = relationship("Asset", back_populates="shodan_data", lazy="raise")
 
 
 class CrawledEndpoint(Base):
@@ -252,7 +252,7 @@ class CrawledEndpoint(Base):
     is_api_endpoint = Column(Boolean, default=False)
     collected_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    asset = relationship("Asset", back_populates="crawled_endpoints", lazy="selectin")
+    asset = relationship("Asset", back_populates="crawled_endpoints", lazy="raise")
 
 
 class TechnologyFingerprint(Base):
@@ -277,5 +277,5 @@ class TechnologyFingerprint(Base):
     source = Column(String(50), nullable=True)  # "httpx", "wappalyzer", "nuclei"
     collected_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    asset = relationship("Asset", back_populates="technology_fingerprints", lazy="selectin")
-    service = relationship("Service", lazy="selectin")
+    asset = relationship("Asset", back_populates="technology_fingerprints", lazy="raise")
+    service = relationship("Service", lazy="raise")

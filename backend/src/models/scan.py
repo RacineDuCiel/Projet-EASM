@@ -32,9 +32,9 @@ class Scan(Base):
     assets_skipped = Column(Integer, default=0, nullable=False)
     vulns_found = Column(Integer, default=0, nullable=False)
 
-    scope = relationship("Scope", back_populates="scans", lazy="selectin")
-    events = relationship("ScanEvent", back_populates="scan", cascade="all, delete-orphan", lazy="selectin", order_by="ScanEvent.created_at")
-    vulnerabilities = relationship("Vulnerability", back_populates="scan", lazy="selectin")
+    scope = relationship("Scope", back_populates="scans", lazy="raise")
+    events = relationship("ScanEvent", back_populates="scan", cascade="all, delete-orphan", lazy="raise", order_by="ScanEvent.created_at")
+    vulnerabilities = relationship("Vulnerability", back_populates="scan", lazy="raise")
 
 class ScanEvent(Base):
     __tablename__ = "scan_events"
@@ -45,4 +45,4 @@ class ScanEvent(Base):
     severity = Column(String, default="info")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    scan = relationship("Scan", back_populates="events", lazy="selectin")
+    scan = relationship("Scan", back_populates="events", lazy="raise")

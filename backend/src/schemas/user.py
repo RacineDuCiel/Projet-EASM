@@ -20,13 +20,13 @@ class UserUpdate(BaseModel):
     program_id: Optional[UUID] = None
     is_active: Optional[bool] = None
 
-from src.schemas.program import Program
+from src.schemas.program import ProgramSummary
 
 class User(UserBase):
     id: UUID
     is_active: bool
     created_at: datetime
-    program: Optional[Program] = None
+    program: Optional[ProgramSummary] = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -4,7 +4,7 @@ from src.models.system_log import SystemLog
 from src.schemas.system_log import SystemLogCreate
 
 async def create_system_log(db: AsyncSession, log: SystemLogCreate) -> SystemLog:
-    db_log = SystemLog(**log.dict())
+    db_log = SystemLog(**log.model_dump())
     db.add(db_log)
     await db.commit()
     await db.refresh(db_log)

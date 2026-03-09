@@ -9,6 +9,7 @@ from sqlalchemy import and_, func
 from uuid import UUID
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Tuple
+import asyncio
 import logging
 import json
 
@@ -111,17 +112,19 @@ async def create_dns_records(
     created_records = []
     now = datetime.now(timezone.utc)
 
+    # Batch query: fetch all existing DNS records for this asset in one query
+    existing_result = await db.execute(
+        select(models.DNSRecord)
+        .where(models.DNSRecord.asset_id == asset.id)
+    )
+    existing_records = {
+        (r.record_type, r.record_value): r
+        for r in existing_result.scalars().all()
+    }
+
     for record_data in payload.records:
-        # Check if record already exists
-        result = await db.execute(
-            select(models.DNSRecord)
-            .where(and_(
-                models.DNSRecord.asset_id == asset.id,
-                models.DNSRecord.record_type == record_data.record_type,
-                models.DNSRecord.record_value == record_data.record_value
-            ))
-        )
-        existing = result.scalar_one_or_none()
+        key = (record_data.record_type, record_data.record_value)
+        existing = existing_records.get(key)
 
         if existing:
             # Update last_seen
@@ -800,17 +803,31 @@ async def get_passive_intel_summary(
 async def get_full_passive_intel(
     db: AsyncSession, asset_id: UUID
 ) -> Dict[str, Any]:
-    """Get all passive intel data for an asset."""
-    # Fetch all data in parallel-ish manner
-    dns_records = await get_dns_records(db, asset_id)
-    whois_record = await get_whois_record(db, asset_id)
-    certificates = await get_certificates(db, asset_id)
-    asn_info = await get_asn_info(db, asset_id)
-    historical_urls = await get_historical_urls(db, asset_id, limit=500)
-    security_headers = await get_security_headers(db, asset_id)
-    favicon_hash = await get_favicon_hash(db, asset_id)
-    shodan_data = await get_shodan_data(db, asset_id)
-    crawled_endpoints = await get_crawled_endpoints(db, asset_id, limit=500)
+    """Get all passive intel data for an asset.
+
+    Fetches all data types concurrently using asyncio.gather for better performance.
+    """
+    (
+        dns_records,
+        whois_record,
+        certificates,
+        asn_info,
+        historical_urls,
+        security_headers,
+        favicon_hash,
+        shodan_data,
+        crawled_endpoints,
+    ) = await asyncio.gather(
+        get_dns_records(db, asset_id),
+        get_whois_record(db, asset_id),
+        get_certificates(db, asset_id),
+        get_asn_info(db, asset_id),
+        get_historical_urls(db, asset_id, limit=500),
+        get_security_headers(db, asset_id),
+        get_favicon_hash(db, asset_id),
+        get_shodan_data(db, asset_id),
+        get_crawled_endpoints(db, asset_id, limit=500),
+    )
 
     return {
         "dns_records": dns_records,

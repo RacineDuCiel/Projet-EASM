@@ -3,6 +3,7 @@ Service layer for scan operations.
 
 Handles scan lifecycle management, Celery task orchestration, and scheduled scan triggering.
 """
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
@@ -97,7 +98,24 @@ class ScanService:
         if not program:
             return None
 
-        # 3. Create Scan record in DB
+        # 3. Check for existing active scan on the same scope (scan lock)
+        active_statuses = [ScanStatus.running, ScanStatus.pending]
+        active_scan_result = await db.execute(
+            select(models.Scan)
+            .where(
+                models.Scan.scope_id == scan_in.scope_id,
+                models.Scan.status.in_(active_statuses)
+            )
+            .limit(1)
+        )
+        active_scan = active_scan_result.scalar_one_or_none()
+        if active_scan:
+            raise ValueError(
+                f"An active scan (ID: {active_scan.id}, status: {active_scan.status.value}) "
+                f"already exists for this scope. Wait for it to complete or stop it first."
+            )
+
+        # 4. Create Scan record in DB
         db_scan = await crud.create_scan(db=db, scan=scan_in)
 
         # 4. Build scan configuration (pass specific port if defined in scope)
@@ -240,8 +258,9 @@ class ScanService:
     @staticmethod
     async def resume_interrupted_scans(db: AsyncSession) -> int:
         """
-        Finds all scans with status 'running' and restarts them.
-        This is intended to be run on application startup to handle crashes/restarts.
+        Finds all scans with status 'running' and restarts them if their Celery tasks
+        are actually dead. This is intended to be run on application startup to handle
+        crashes/restarts.
         """
         from sqlalchemy.orm import selectinload
 
@@ -253,8 +272,33 @@ class ScanService:
         )
         running_scans = result.scalars().all()
 
+        if not running_scans:
+            return 0
+
+        # Check which Celery tasks are actually still alive
+        i = celery_app.control.inspect()
+        active_tasks = await asyncio.to_thread(i.active) or {}
+        reserved_tasks = await asyncio.to_thread(i.reserved) or {}
+
+        # Build set of active task IDs for fast lookup
+        active_task_scan_ids = set()
+        for worker_tasks in list(active_tasks.values()) + list(reserved_tasks.values()):
+            if worker_tasks:
+                for task_info in worker_tasks:
+                    args = task_info.get('args', [])
+                    # scan_id is typically the second argument in run_scan tasks
+                    if len(args) >= 2:
+                        active_task_scan_ids.add(args[1])
+
         count = 0
         for scan in running_scans:
+            scan_id_str = str(scan.id)
+
+            # Only resume if the task is NOT still running in Celery
+            if scan_id_str in active_task_scan_ids:
+                logger.info(f"Scan {scan.id} is still active in Celery, skipping resume")
+                continue
+
             # Log the interruption
             event = ScanEvent(
                 scan_id=scan.id,
@@ -311,10 +355,10 @@ class ScanService:
         if scan.status not in [ScanStatus.running, ScanStatus.pending]:
             return scan
 
-        # 1. Revoke Celery Tasks
+        # 1. Revoke Celery Tasks (blocking calls wrapped in asyncio.to_thread)
         i = celery_app.control.inspect()
-        active = i.active()
-        reserved = i.reserved()
+        active = await asyncio.to_thread(i.active)
+        reserved = await asyncio.to_thread(i.reserved)
 
         tasks_to_revoke = []
 

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type { Asset } from '@/types';
@@ -11,22 +12,30 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
-import { Eye } from 'lucide-react';
+import { Eye, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LoadingSpinner, EmptyState } from '@/components/common';
+import { Globe } from 'lucide-react';
 
-// Actually, I'll use a simple span for badges for now or create a Badge component.
-// Let's create a simple Badge component inline or use basic Tailwind classes.
+const PAGE_SIZE = 50;
 
 export default function AssetsPage() {
+    const [page, setPage] = useState(0);
+
     const { data: assets, isLoading, error } = useQuery({
-        queryKey: ['assets'],
+        queryKey: ['assets', page],
         queryFn: async () => {
-            const response = await api.get<Asset[]>('/assets/');
+            const response = await api.get<Asset[]>('/assets/', {
+                params: {
+                    skip: page * PAGE_SIZE,
+                    limit: PAGE_SIZE,
+                },
+            });
             return response.data;
         },
     });
 
     if (isLoading) {
-        return <div className="p-8">Loading assets...</div>;
+        return <LoadingSpinner label="Loading assets..." size="lg" />;
     }
 
     if (error) {
@@ -56,10 +65,14 @@ export default function AssetsPage() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {assets?.length === 0 ? (
+                        {assets?.length === 0 && page === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="h-24 text-center">
-                                    No assets found.
+                                <TableCell colSpan={7} className="h-24 text-center">
+                                    <EmptyState
+                                        icon={Globe}
+                                        title="No assets found"
+                                        description="Assets will appear here once a scan has been completed."
+                                    />
                                 </TableCell>
                             </TableRow>
                         ) : (
@@ -94,6 +107,33 @@ export default function AssetsPage() {
                         )}
                     </TableBody>
                 </Table>
+            </div>
+
+            {/* Pagination Controls */}
+            <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                    Page {page + 1} {assets && assets.length > 0 ? `(${assets.length} results)` : ''}
+                </p>
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage((p) => Math.max(0, p - 1))}
+                        disabled={page === 0}
+                    >
+                        <ChevronLeft className="h-4 w-4 mr-1" />
+                        Previous
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage((p) => p + 1)}
+                        disabled={!assets || assets.length < PAGE_SIZE}
+                    >
+                        Next
+                        <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                </div>
             </div>
         </div>
     );

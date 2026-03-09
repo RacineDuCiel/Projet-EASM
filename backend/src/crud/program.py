@@ -8,9 +8,13 @@ async def create_program(db: AsyncSession, program: schemas.ProgramCreate):
     db_program = models.Program(name=program.name)
     db.add(db_program)
     await db.commit()
-    await db.refresh(db_program)
-    await db.refresh(db_program)
-    return db_program
+    # Eager load scopes to prevent lazy="raise" on serialization
+    result = await db.execute(
+        select(models.Program)
+        .options(selectinload(models.Program.scopes))
+        .where(models.Program.id == db_program.id)
+    )
+    return result.scalar_one()
 
 async def update_program(db: AsyncSession, program_id: UUID, program_in: schemas.ProgramUpdate):
     db_program = await get_program(db, program_id)
@@ -23,8 +27,13 @@ async def update_program(db: AsyncSession, program_id: UUID, program_in: schemas
         
     db.add(db_program)
     await db.commit()
-    await db.refresh(db_program)
-    return db_program
+    # Eager load scopes to prevent lazy="raise" on serialization
+    result = await db.execute(
+        select(models.Program)
+        .options(selectinload(models.Program.scopes))
+        .where(models.Program.id == db_program.id)
+    )
+    return result.scalar_one()
 
 async def get_programs(db: AsyncSession, skip: int = 0, limit: int = 100):
     result = await db.execute(
@@ -67,6 +76,7 @@ async def create_scope(db: AsyncSession, scope: schemas.ScopeCreate, program_id:
     db.add(db_scope)
     await db.commit()
     await db.refresh(db_scope)
+    # Scope schema doesn't require eager loading relations. It only has primitive typed fields.
     return db_scope
 
 async def get_scopes(db: AsyncSession, program_id: UUID):

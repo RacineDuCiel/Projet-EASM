@@ -12,7 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Play, Loader2, RefreshCw } from 'lucide-react';
+import { Play, Loader2, RefreshCw, Search as SearchIcon } from 'lucide-react';
+import { LoadingSpinner, EmptyState } from '@/components/common';
 import { format } from 'date-fns';
 import { ProfileSelector, ProfileBadge, getProfileDisplayName } from '@/components/scans/ProfileSelector';
 
@@ -31,7 +32,14 @@ export default function ScansPage() {
             const response = await api.get<Scan[]>('/scans/');
             return response.data;
         },
-        refetchInterval: 5000, // Poll every 5s
+        refetchInterval: (query) => {
+            // Only poll when there are active/running scans
+            const data = query.state.data;
+            const hasActiveScans = data?.some(
+                (s) => s.status === 'running' || s.status === 'pending'
+            );
+            return hasActiveScans ? 5000 : false;
+        },
     });
 
     // Fetch Programs (to get scopes)
@@ -200,7 +208,7 @@ export default function ScansPage() {
                 </CardHeader>
                 <CardContent>
                     {isLoadingScans ? (
-                        <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>
+                        <LoadingSpinner label="Loading scans..." size="lg" />
                     ) : (
                         <Table>
                             <TableHeader>
@@ -279,7 +287,11 @@ export default function ScansPage() {
                                 {scans?.length === 0 && (
                                     <TableRow>
                                         <TableCell colSpan={7} className="text-center text-muted-foreground">
-                                            No scans found.
+                                            <EmptyState
+                                                icon={SearchIcon}
+                                                title="No scans found"
+                                                description="Launch a scan to start discovering assets and vulnerabilities."
+                                            />
                                         </TableCell>
                                     </TableRow>
                                 )}
